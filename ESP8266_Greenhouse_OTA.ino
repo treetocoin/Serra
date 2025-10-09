@@ -1,0 +1,477 @@
+/**
+ * Greenhouse Management System - ESP8266 NodeMCU with OTA Support
+ * 
+ * OTA Update Methods:
+ * 1. ArduinoOTA - Upload via Arduino IDE (network port)
+ * 2. Web Interface - Browser upload at http://<device-ip>/update
+ * 
+ * New Features:
+ * - Over-The-Air firmware updates
+ * - Web-based firmware upload interface
+ * - Password-protected OTA
+ * - Update progress monitoring
+ */
+
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
+#include <DHT.h>
+#include <ArduinoOTA.h>          // ← NEW: OTA updates
+#include <ESP8266WebServer.h>    // ← NEW: Web interface for OTA
+#include <ESP8266HTTPUpdateServer.h> // ← NEW: HTTP update server
+
+// ========================================
+// PIN DEFINITIONS
+// ========================================
+#ifndef D0
+  #define D0 16
+  #define D1 5
+  #define D2 4
+  #define D3 0
+  #define D4 2
+  #define D5 14
+  #define D6 12
+  #define D7 13
+  #define D8 15
+#endif
+
+// ========================================
+// CONFIGURATION
+// ========================================
+
+// WiFi credentials
+const char* WIFI_SSID = "TP-Link_D61B";
+const char* WIFI_PASSWORD = "61248080";
+
+// OTA Configuration
+const char* OTA_HOSTNAME = "serra-esp8266";  // Nome del dispositivo in rete
+const char* OTA_PASSWORD = "serra2025";      // Password per aggiornamenti OTA
+
+// Supabase configuration
+const char* SUPABASE_URL = "https://fmyomzywzjtxmabvvjcd.supabase.co";
+const char* API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteW9tenl3emp0eG1hYnZ2amNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5MTU1ODksImV4cCI6MjA3NTQ5MTU4OX0.XNaYzevjhVxRBC6hIMjSHBMe6iNoARz78XvB4iziuCE";
+const char* DEVICE_ID = "0f24ada1-b6f6-45a2-aa0e-0e417daae659";
+
+// Hardware pins
+#define DHT_PIN_1 D2
+#define DHT_PIN_2 D1
+#define SOIL_PIN A0
+#define PUMP_PIN D5
+#define FAN_PIN D6
+
+// Sensors
+#define DHT_TYPE DHT22
+DHT dht1(DHT_PIN_1, DHT_TYPE);
+DHT dht2(DHT_PIN_2, DHT_TYPE);
+#define ENABLE_DHT2 true
+
+// Clients
+WiFiClientSecure client;
+ESP8266WebServer httpServer(80);           // ← NEW: Web server on port 80
+ESP8266HTTPUpdateServer httpUpdater;       // ← NEW: Update server
+
+// Timing
+const unsigned long HEARTBEAT_INTERVAL = 30000;
+const unsigned long SENSOR_INTERVAL = 30000;
+const unsigned long COMMAND_INTERVAL = 30000;
+
+unsigned long lastHeartbeatTime = 0;
+unsigned long lastSensorDataTime = 0;
+unsigned long lastCommandTime = 0;
+
+bool sensorsConfigured = false;
+
+// ========================================
+// SETUP
+// ========================================
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  Serial.println("\n\n=================================");
+  Serial.println("Greenhouse System with OTA");
+  Serial.println("Firmware v1.1 - OTA Enabled");
+  Serial.println("=================================\n");
+
+  client.setInsecure();
+
+  // Initialize sensors
+  dht1.begin();
+  if (ENABLE_DHT2) dht2.begin();
+
+  // Initialize actuators
+  pinMode(PUMP_PIN, OUTPUT);
+  pinMode(FAN_PIN, OUTPUT);
+  digitalWrite(PUMP_PIN, LOW);
+  digitalWrite(FAN_PIN, LOW);
+
+  // Connect to WiFi
+  connectWiFi();
+
+  // ========================================
+  // SETUP OTA - ArduinoOTA
+  // ========================================
+  setupOTA();
+
+  // ========================================
+  // SETUP WEB OTA UPDATE SERVER
+  // ========================================
+  setupWebOTA();
+
+  // Check sensor configuration
+  checkSensorConfiguration();
+
+  Serial.println("\n✓ Setup complete - OTA enabled");
+  Serial.printf("Device IP: %s\n", WiFi.localIP().toString().c_str());
+  Serial.printf("OTA Hostname: %s.local\n", OTA_HOSTNAME);
+  Serial.printf("Web Update: http://%s/update\n", WiFi.localIP().toString().c_str());
+  Serial.println("=================================\n");
+}
+
+// ========================================
+// OTA SETUP FUNCTIONS
+// ========================================
+
+void setupOTA() {
+  // Set OTA hostname
+  ArduinoOTA.setHostname(OTA_HOSTNAME);
+  
+  // Set OTA password (optional but recommended)
+  ArduinoOTA.setPassword(OTA_PASSWORD);
+
+  // OTA port (default 8266)
+  ArduinoOTA.setPort(8266);
+
+  // Callbacks for monitoring
+  ArduinoOTA.onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH) {
+      type = "sketch";
+    } else { // U_FS
+      type = "filesystem";
+    }
+    Serial.println("🔄 OTA Update Start: " + type);
+  });
+
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\n✓ OTA Update Complete!");
+  });
+
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("✗ OTA Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+  });
+
+  ArduinoOTA.begin();
+  Serial.println("✓ ArduinoOTA initialized");
+}
+
+void setupWebOTA() {
+  // Setup HTTP Update Server with password
+  httpUpdater.setup(&httpServer, "/update", "admin", OTA_PASSWORD);
+  
+  // Root page - Device info
+  httpServer.on("/", HTTP_GET, []() {
+    String html = "<html><head><title>Serra ESP8266</title></head><body>";
+    html += "<h1>Greenhouse Management System</h1>";
+    html += "<p><b>Device ID:</b> " + String(DEVICE_ID) + "</p>";
+    html += "<p><b>Firmware:</b> v1.1 - OTA Enabled</p>";
+    html += "<p><b>IP Address:</b> " + WiFi.localIP().toString() + "</p>";
+    html += "<p><b>WiFi Signal:</b> " + String(WiFi.RSSI()) + " dBm</p>";
+    html += "<p><b>Free Heap:</b> " + String(ESP.getFreeHeap()) + " bytes</p>";
+    html += "<p><b>Uptime:</b> " + String(millis() / 1000) + " seconds</p>";
+    html += "<hr><p><a href='/update'>Firmware Update</a></p>";
+    html += "</body></html>";
+    httpServer.send(200, "text/html", html);
+  });
+
+  httpServer.begin();
+  Serial.println("✓ Web OTA Server started");
+  Serial.printf("  Access: http://%s/update\n", WiFi.localIP().toString().c_str());
+  Serial.println("  Username: admin");
+  Serial.println("  Password: serra2025");
+}
+
+// ========================================
+// MAIN LOOP
+// ========================================
+
+void loop() {
+  // IMPORTANT: Handle OTA requests
+  ArduinoOTA.handle();
+  httpServer.handleClient();
+
+  // WiFi check
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi disconnected - reconnecting...");
+    connectWiFi();
+  }
+
+  unsigned long currentTime = millis();
+
+  // Heartbeat
+  if (currentTime - lastHeartbeatTime >= HEARTBEAT_INTERVAL) {
+    sendHeartbeat();
+    lastHeartbeatTime = currentTime;
+  }
+
+  // Sensor data
+  if (sensorsConfigured && currentTime - lastSensorDataTime >= SENSOR_INTERVAL) {
+    sendSensorData();
+    lastSensorDataTime = currentTime;
+  }
+
+  // Commands
+  if (currentTime - lastCommandTime >= COMMAND_INTERVAL) {
+    pollForCommands();
+    lastCommandTime = currentTime;
+  }
+
+  delay(100);
+  yield();
+}
+
+// ========================================
+// WiFi CONNECTION
+// ========================================
+
+void connectWiFi() {
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(WIFI_SSID);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n✓ WiFi connected!");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\n✗ WiFi connection failed!");
+  }
+}
+
+void checkSensorConfiguration() {
+  Serial.println("\nChecking sensor configuration...");
+  HTTPClient http;
+  http.begin(client, String(SUPABASE_URL) + "/rest/v1/rpc/check_device_sensors");
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", API_KEY);
+  http.addHeader("Authorization", "Bearer " + String(API_KEY));
+
+  String payload = "{\"device_id_param\":\"" + String(DEVICE_ID) + "\"}";
+  int httpCode = http.POST(payload);
+  
+  if (httpCode == 200) {
+    String response = http.getString();
+    DynamicJsonDocument doc(256);
+    if (!deserializeJson(doc, response) && doc["has_sensors"].as<bool>()) {
+      sensorsConfigured = true;
+      Serial.println("✓ Sensors configured");
+    }
+  }
+  http.end();
+}
+
+// ========================================
+// SUPABASE FUNCTIONS (unchanged)
+// ========================================
+
+void sendHeartbeat() {
+  HTTPClient http;
+  http.begin(client, String(SUPABASE_URL) + "/rest/v1/rpc/device_heartbeat");
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", API_KEY);
+  http.addHeader("Authorization", "Bearer " + String(API_KEY));
+
+  String payload = "{\"device_id_param\":\"" + String(DEVICE_ID) + "\"}";
+  int httpCode = http.POST(payload);
+
+  if (httpCode == 200) {
+    Serial.println("✓ Heartbeat sent");
+  } else {
+    Serial.printf("✗ Heartbeat error: %d\n", httpCode);
+  }
+  http.end();
+}
+
+void sendSensorData() {
+  float temperature1 = dht1.readTemperature();
+  float humidity1 = dht1.readHumidity();
+
+  if (isnan(temperature1) || isnan(humidity1)) {
+    temperature1 = 22.5;
+    humidity1 = 55.0;
+  }
+
+  Serial.printf("T1: %.1f°C, H1: %.1f%%\n", temperature1, humidity1);
+
+  float temperature2 = 0, humidity2 = 0;
+  bool hasDHT2 = false;
+  if (ENABLE_DHT2) {
+    temperature2 = dht2.readTemperature();
+    humidity2 = dht2.readHumidity();
+    if (!isnan(temperature2) && !isnan(humidity2)) {
+      hasDHT2 = true;
+      Serial.printf("T2: %.1f°C, H2: %.1f%%\n", temperature2, humidity2);
+    }
+  }
+
+  int soilRaw = analogRead(SOIL_PIN);
+  float soilMoisture = map(soilRaw, 0, 1023, 0, 100);
+
+  HTTPClient http;
+  http.begin(client, String(SUPABASE_URL) + "/rest/v1/rpc/insert_sensor_readings");
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", API_KEY);
+  http.addHeader("Authorization", "Bearer " + String(API_KEY));
+
+  String payload = "{\"device_id_param\":\"" + String(DEVICE_ID) + "\",\"readings\":[";
+  payload += "{\"sensor_id\":\"temp_1\",\"value\":" + String(temperature1) + "},";
+  payload += "{\"sensor_id\":\"humidity_1\",\"value\":" + String(humidity1) + "},";
+  if (hasDHT2) {
+    payload += "{\"sensor_id\":\"temp_2\",\"value\":" + String(temperature2) + "},";
+    payload += "{\"sensor_id\":\"humidity_2\",\"value\":" + String(humidity2) + "},";
+  }
+  payload += "{\"sensor_id\":\"soil_1\",\"value\":" + String(soilMoisture) + "}]}";
+
+  int httpCode = http.POST(payload);
+  if (httpCode == 200) {
+    Serial.println("✓ Sensor data sent");
+  }
+  http.end();
+}
+
+void configureSensorsAndActuators() {
+  sendSensorData();
+  sensorsConfigured = true;
+  Serial.println("✓ Configuration complete");
+}
+
+void pollForCommands() {
+  HTTPClient http;
+  
+  // Check configuration
+  http.begin(client, String(SUPABASE_URL) + "/rest/v1/rpc/check_device_configuration");
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", API_KEY);
+  http.addHeader("Authorization", "Bearer " + String(API_KEY));
+
+  String payload = "{\"device_id_param\":\"" + String(DEVICE_ID) + "\"}";
+  int httpCode = http.POST(payload);
+
+  if (httpCode == 200) {
+    String response = http.getString();
+    DynamicJsonDocument doc(512);
+    if (!deserializeJson(doc, response)) {
+      bool configRequested = doc["configuration_requested"].as<bool>();
+      if (configRequested && !sensorsConfigured) {
+        http.end();
+        configureSensorsAndActuators();
+        
+        HTTPClient httpClear;
+        httpClear.begin(client, String(SUPABASE_URL) + "/rest/v1/rpc/clear_device_configuration");
+        httpClear.addHeader("Content-Type", "application/json");
+        httpClear.addHeader("apikey", API_KEY);
+        httpClear.addHeader("Authorization", "Bearer " + String(API_KEY));
+        httpClear.POST("{\"device_id_param\":\"" + String(DEVICE_ID) + "\"}");
+        httpClear.end();
+        return;
+      }
+    }
+  }
+  http.end();
+
+  // Poll commands
+  http.begin(client, String(SUPABASE_URL) + "/rest/v1/rpc/get_pending_commands");
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", API_KEY);
+  http.addHeader("Authorization", "Bearer " + String(API_KEY));
+
+  httpCode = http.POST("{\"device_id_param\":\"" + String(DEVICE_ID) + "\"}");
+
+  if (httpCode == 200) {
+    String response = http.getString();
+    DynamicJsonDocument doc(2048);
+    if (!deserializeJson(doc, response)) {
+      JsonArray commands = doc.as<JsonArray>();
+      for (JsonObject command : commands) {
+        String commandId = command["id"].as<String>();
+        String actuatorId = command["actuator_id"].as<String>();
+        String commandType = command["command_type"].as<String>();
+        int value = command["value"] | 0;
+
+        if (executeCommand(actuatorId, commandType, value)) {
+          confirmCommandExecution(commandId);
+        }
+      }
+    }
+  }
+  http.end();
+}
+
+bool executeCommand(String actuatorId, String commandType, int value) {
+  if (actuatorId == "pump_1") {
+    if (commandType == "turn_on") {
+      digitalWrite(PUMP_PIN, HIGH);
+      Serial.println("✓ Pump ON");
+      return true;
+    } else if (commandType == "turn_off") {
+      digitalWrite(PUMP_PIN, LOW);
+      Serial.println("✓ Pump OFF");
+      return true;
+    }
+  }
+
+  if (actuatorId == "fan_1") {
+    if (commandType == "turn_on") {
+      digitalWrite(FAN_PIN, HIGH);
+      Serial.println("✓ Fan ON");
+      return true;
+    } else if (commandType == "turn_off") {
+      digitalWrite(FAN_PIN, LOW);
+      Serial.println("✓ Fan OFF");
+      return true;
+    } else if (commandType == "set_pwm") {
+      int pwmValue = map(value, 0, 255, 0, 1023);
+      analogWrite(FAN_PIN, pwmValue);
+      Serial.printf("✓ Fan PWM=%d\n", pwmValue);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void confirmCommandExecution(String commandId) {
+  HTTPClient http;
+  http.begin(client, String(SUPABASE_URL) + "/rest/v1/rpc/confirm_command_execution");
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", API_KEY);
+  http.addHeader("Authorization", "Bearer " + String(API_KEY));
+
+  String payload = "{\"command_id\":\"" + commandId + "\"}";
+  int httpCode = http.POST(payload);
+
+  if (httpCode == 200) {
+    Serial.println("✓ Command confirmed");
+  }
+  http.end();
+}
