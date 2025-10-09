@@ -16,7 +16,7 @@ export const RuleCard: React.FC<RuleCardProps> = ({ rule, onEdit, onDelete, onTo
     onToggle(rule.id, !rule.is_active);
   };
 
-  const formatDate = (dateString: string | null) => {
+  const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return 'Mai';
     const date = new Date(dateString);
     return new Intl.DateTimeFormat('it-IT', {

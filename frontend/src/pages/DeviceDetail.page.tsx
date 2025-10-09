@@ -13,7 +13,7 @@ export function DeviceDetailPage() {
   const { user, signOut } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data: device, isLoading, error, refetch } = useQuery({
+  const { data: device, isLoading, error } = useQuery({
     queryKey: ['device', id],
     queryFn: async () => {
       if (!id) throw new Error('No device ID');

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useCreateRule, useUpdateRule, useAutomationRule } from '../../lib/hooks/useAutomationRules';
 import { ConditionBuilder } from './ConditionBuilder';
-import type { CreateRuleRequest, ActionType } from '../../types/automation';
+import type { CreateRuleRequest, ActionType, OperatorType } from '../../types/automation';
 
 interface Actuator {
   id: string;
@@ -24,7 +24,7 @@ interface ConditionGroup {
   group_order: number;
   conditions: {
     sensor_id: string;
-    operator: string;
+    operator: OperatorType;
     value: number;
     value_max?: number;
     condition_order: number;
@@ -89,7 +89,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ ruleId, onClose }) => {
           group_order: group.group_order,
           conditions: group.conditions.map(cond => ({
             sensor_id: cond.sensor_id,
-            operator: cond.operator,
+            operator: cond.operator as OperatorType,
             value: cond.value,
             value_max: cond.value_max,
             condition_order: cond.condition_order,
@@ -112,9 +112,9 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ ruleId, onClose }) => {
       // Load hysteresis settings
       if (existingRule.on_threshold !== null && existingRule.off_threshold !== null) {
         setEnableHysteresis(true);
-        setOnThreshold(existingRule.on_threshold);
-        setOffThreshold(existingRule.off_threshold);
-        setMinStateChangeInterval(existingRule.min_state_change_interval_seconds || 60);
+        setOnThreshold(existingRule.on_threshold ?? null);
+        setOffThreshold(existingRule.off_threshold ?? null);
+        setMinStateChangeInterval(existingRule.min_state_change_interval_seconds ?? 60);
       }
     }
   }, [existingRule, ruleId]);
@@ -247,14 +247,14 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ ruleId, onClose }) => {
           description: description.trim() || undefined,
           priority,
           is_active: true,
-          on_threshold: enableHysteresis ? onThreshold : undefined,
-          off_threshold: enableHysteresis ? offThreshold : undefined,
+          on_threshold: enableHysteresis ? (onThreshold ?? undefined) : undefined,
+          off_threshold: enableHysteresis ? (offThreshold ?? undefined) : undefined,
           min_state_change_interval_seconds: enableHysteresis ? minStateChangeInterval : undefined,
           condition_groups: conditionGroups.map(group => ({
             group_order: group.group_order,
             conditions: group.conditions.map(cond => ({
               sensor_id: cond.sensor_id,
-              operator: cond.operator as any,
+              operator: cond.operator,
               value: cond.value,
               value_max: cond.value_max,
               condition_order: cond.condition_order,

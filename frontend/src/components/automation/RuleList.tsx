@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useAutomationRules, useUpdateRule, useDeleteRule } from '../../lib/hooks/useAutomationRules';
 import { RuleCard } from './RuleCard';
-import type { AutomationRule } from '../../types/automation';
 
 interface RuleListProps {
   onSelectRule: (ruleId: string) => void;

@@ -25,7 +25,7 @@ export const ActuatorEditor: React.FC<ActuatorEditorProps> = ({ actuator, onClos
 
     try {
       const { error: updateError } = await actuatorsService.updateActuator(actuator.id, {
-        name: name.trim() || null,
+        name: name.trim() || undefined,
       });
 
       if (updateError) throw updateError;

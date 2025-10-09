@@ -101,7 +101,7 @@ export const RuleHistory: React.FC<RuleHistoryProps> = ({ ruleId }) => {
                   {formatDate(log.executed_at)}
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                  {log.sensor_value !== null ? log.sensor_value.toString() : '-'}
+                  {log.sensor_value !== null && log.sensor_value !== undefined ? log.sensor_value.toString() : '-'}
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap">
                   <div className="flex items-center space-x-2">

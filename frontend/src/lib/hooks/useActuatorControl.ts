@@ -73,7 +73,7 @@ export function useActuatorControl(deviceId: string) {
     },
 
     // On error, rollback to previous state
-    onError: (err, params, context) => {
+    onError: (err, _params, context) => {
       if (context?.previousActuators) {
         queryClient.setQueryData(['actuators', deviceId], context.previousActuators);
       }

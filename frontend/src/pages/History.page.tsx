@@ -282,7 +282,7 @@ export function HistoryPage() {
           </div>
 
           {/* Sensor Filters */}
-          {history?.sensorNames && history.sensorNames.length > 0 && (
+          {history && !Array.isArray(history) && history.sensorNames && history.sensorNames.length > 0 && (
             <div className="bg-white shadow rounded-lg p-4">
               <h2 className="text-lg font-semibold text-gray-900 mb-3">
                 Sensori
@@ -327,7 +327,7 @@ export function HistoryPage() {
               <div className="flex items-center justify-center h-96">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
               </div>
-            ) : history?.data && history.data.length > 0 ? (
+            ) : history && !Array.isArray(history) && history.data && history.data.length > 0 ? (
               <ResponsiveContainer width="100%" height={400}>
                 <LineChart data={history.data}>
                   <CartesianGrid strokeDasharray="3 3" />

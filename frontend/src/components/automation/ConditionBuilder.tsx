@@ -110,11 +110,6 @@ export const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
     onChange(updated);
   };
 
-  const getSensorName = (sensorId: string) => {
-    const sensor = sensors?.find(s => s.id === sensorId);
-    return sensor?.name || sensor?.sensor_id || 'Seleziona sensore';
-  };
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
