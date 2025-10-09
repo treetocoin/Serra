@@ -1,0 +1,35 @@
+# Netlify Configuration for Greenhouse Management System
+[build]
+  # Directory with package.json containing build scripts
+  base = "frontend/"
+
+  # Build command
+  command = "npm run build"
+
+  # Directory that contains the deploy-ready HTML files and assets
+  publish = "dist"
+
+# Environment variables (set these in Netlify Dashboard)
+# VITE_SUPABASE_URL
+# VITE_SUPABASE_ANON_KEY
+
+# Redirect all requests to index.html for client-side routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Headers for security
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Cache static assets
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

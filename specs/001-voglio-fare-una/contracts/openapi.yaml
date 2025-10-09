@@ -1,0 +1,1149 @@
+openapi: 3.0.3
+info:
+  title: Home Greenhouse Management API
+  description: |
+    REST API for greenhouse management system supporting user authentication,
+    ESP32 device connectivity, sensor monitoring, and actuator control.
+
+    ## Authentication
+    - **User Authentication**: Bearer JWT tokens (obtain via `/auth/login`)
+    - **ESP32 Device Authentication**: API key in `X-API-Key` header
+
+    ## API Endpoints
+    - **User Endpoints**: `/api/v1/auth/*` - User authentication and account management
+    - **Device Endpoints**: `/api/v1/devices/*` - Device registration and management
+    - **Sensor Endpoints**: `/api/v1/sensors/*` - Sensor data push (ESP32) and query (users)
+    - **Actuator Endpoints**: `/api/v1/actuators/*` - Actuator control and command management
+    - **Data Endpoints**: `/api/v1/data/*` - Historical data queries and export
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@greenhouse.example.com
+
+servers:
+  - url: https://api.greenhouse.example.com/api/v1
+    description: Production server
+  - url: http://localhost:8000/api/v1
+    description: Development server
+
+tags:
+  - name: Authentication
+    description: User authentication and account management
+  - name: Devices
+    description: ESP32 device registration and management
+  - name: Sensors
+    description: Sensor data ingestion and retrieval
+  - name: Actuators
+    description: Actuator control and command management
+  - name: Data
+    description: Historical data queries and export
+
+paths:
+  # ============================================================================
+  # Authentication Endpoints
+  # ============================================================================
+
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register new user account
+      description: Create a new user account with email and password
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegistration'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: User login
+      description: Authenticate user and receive JWT token
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLogin'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/password-reset/request:
+    post:
+      tags: [Authentication]
+      summary: Request password reset
+      description: Send password reset email to user
+      operationId: requestPasswordReset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Password reset email sent (always returns 200 to prevent email enumeration)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "If the email exists, a password reset link has been sent"
+
+  /auth/password-reset/confirm:
+    post:
+      tags: [Authentication]
+      summary: Confirm password reset
+      description: Reset password using token from email
+      operationId: confirmPasswordReset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirm'
+      responses:
+        '200':
+          description: Password reset successful
+        '400':
+          description: Invalid or expired token
+
+  # ============================================================================
+  # Device Endpoints
+  # ============================================================================
+
+  /devices:
+    get:
+      tags: [Devices]
+      summary: List user's devices
+      description: Get all ESP32 devices registered to current user
+      operationId: listDevices
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [online, offline, all]
+            default: all
+          description: Filter by connection status
+      responses:
+        '200':
+          description: List of devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Devices]
+      summary: Register new device
+      description: Register ESP32 device to user account (generates API key)
+      operationId: registerDevice
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceRegistration'
+      responses:
+        '201':
+          description: Device registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceRegistrationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /devices/discover:
+    get:
+      tags: [Devices]
+      summary: Discover broadcasting devices
+      description: List ESP32 devices broadcasting availability for registration
+      operationId: discoverDevices
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of discoverable devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DiscoverableDevice'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /devices/{device_id}:
+    get:
+      tags: [Devices]
+      summary: Get device details
+      description: Get detailed information about specific device
+      operationId: getDevice
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Device details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Devices]
+      summary: Update device
+      description: Update device name or settings
+      operationId: updateDevice
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceUpdate'
+      responses:
+        '200':
+          description: Device updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Devices]
+      summary: Delete device
+      description: Remove device from account (revokes API key, cascades to sensors/actuators)
+      operationId: deleteDevice
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '204':
+          description: Device deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # Sensor Endpoints
+  # ============================================================================
+
+  /sensors/data:
+    post:
+      tags: [Sensors]
+      summary: Push sensor data (ESP32)
+      description: |
+        ESP32 endpoint to push sensor readings to backend.
+        Requires X-API-Key header with valid device API key.
+        Supports auto-discovery: new sensors automatically registered.
+      operationId: pushSensorData
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorDataPayload'
+      responses:
+        '201':
+          description: Sensor data accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SensorDataResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sensors/current:
+    get:
+      tags: [Sensors]
+      summary: Get current sensor readings
+      description: Get latest readings from all user's sensors
+      operationId: getCurrentReadings
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: device_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by specific device
+      responses:
+        '200':
+          description: Current sensor readings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SensorReading'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /sensors/{sensor_id}:
+    get:
+      tags: [Sensors]
+      summary: Get sensor details
+      description: Get sensor metadata and configuration
+      operationId: getSensor
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SensorId'
+      responses:
+        '200':
+          description: Sensor details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sensor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Sensors]
+      summary: Update sensor
+      description: Update sensor name, validation ranges, or settings
+      operationId: updateSensor
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SensorId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorUpdate'
+      responses:
+        '200':
+          description: Sensor updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sensor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # Actuator Endpoints
+  # ============================================================================
+
+  /actuators/command:
+    post:
+      tags: [Actuators]
+      summary: Send actuator command (User)
+      description: Queue command for actuator (retrieved by ESP32 on next poll)
+      operationId: sendActuatorCommand
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActuatorCommandRequest'
+      responses:
+        '201':
+          description: Command queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActuatorCommandResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Actuator or device not found
+
+  /actuators/commands:
+    get:
+      tags: [Actuators]
+      summary: Retrieve pending commands (ESP32)
+      description: |
+        ESP32 endpoint to poll for pending actuator commands.
+        Returns up to 10 pending commands, oldest first.
+        Commands marked as 'retrieved' after this call.
+      operationId: retrieveCommands
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Pending commands
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActuatorCommand'
+        '401':
+          description: Invalid API key
+
+  /actuators/commands/{command_id}/confirm:
+    post:
+      tags: [Actuators]
+      summary: Confirm command execution (ESP32)
+      description: ESP32 confirms successful command execution or reports error
+      operationId: confirmCommand
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: command_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommandConfirmation'
+      responses:
+        '200':
+          description: Confirmation recorded
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Invalid API key
+        '404':
+          description: Command not found
+
+  /actuators/{actuator_id}:
+    get:
+      tags: [Actuators]
+      summary: Get actuator details
+      description: Get actuator metadata and current state
+      operationId: getActuator
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActuatorId'
+      responses:
+        '200':
+          description: Actuator details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Actuator'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Actuators]
+      summary: Update actuator
+      description: Update actuator name or settings
+      operationId: updateActuator
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActuatorId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActuatorUpdate'
+      responses:
+        '200':
+          description: Actuator updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Actuator'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # Data Endpoints
+  # ============================================================================
+
+  /data/historical:
+    get:
+      tags: [Data]
+      summary: Query historical sensor data
+      description: Get sensor readings for specified date range and sensors
+      operationId: queryHistoricalData
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sensor_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Sensor ID
+        - name: start_time
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: Start of time range (ISO 8601)
+        - name: end_time
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: End of time range (ISO 8601)
+        - name: aggregation
+          in: query
+          schema:
+            type: string
+            enum: [raw, hourly, daily]
+            default: raw
+          description: Data aggregation level
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+            default: 1000
+          description: Maximum number of data points
+      responses:
+        '200':
+          description: Historical data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoricalDataResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /data/delete:
+    delete:
+      tags: [Data]
+      summary: Delete historical data
+      description: Delete sensor readings for specified date range and device/sensor
+      operationId: deleteHistoricalData
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataDeletionRequest'
+      responses:
+        '200':
+          description: Data deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted_count:
+                    type: integer
+                    description: Number of readings deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+# ==============================================================================
+# Components
+# ==============================================================================
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /auth/login
+
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key generated during device registration
+
+  parameters:
+    DeviceId:
+      name: device_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Device UUID
+
+    SensorId:
+      name: sensor_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Sensor UUID
+
+    ActuatorId:
+      name: actuator_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Actuator UUID
+
+  schemas:
+    # Authentication Schemas
+    UserRegistration:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: SecurePass123
+        full_name:
+          type: string
+          example: John Doe
+
+    UserLogin:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    PasswordResetConfirm:
+      type: object
+      required: [token, new_password]
+      properties:
+        token:
+          type: string
+          description: Reset token from email
+        new_password:
+          type: string
+          format: password
+          minLength: 8
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+        token_type:
+          type: string
+          example: bearer
+        expires_in:
+          type: integer
+          description: Token expiration in seconds
+          example: 86400
+
+    # Device Schemas
+    DeviceRegistration:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Greenhouse Main
+
+    DeviceRegistrationResponse:
+      type: object
+      properties:
+        device_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        api_key:
+          type: string
+          description: API key (shown only once - store in ESP32 firmware)
+          example: abcd1234ef567890...
+        warning:
+          type: string
+          example: "Save this API key - it will not be shown again"
+
+    Device:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        connection_status:
+          type: string
+          enum: [online, offline, error]
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        registered_at:
+          type: string
+          format: date-time
+        firmware_version:
+          type: string
+          nullable: true
+
+    DeviceDetail:
+      allOf:
+        - $ref: '#/components/schemas/Device'
+        - type: object
+          properties:
+            sensors:
+              type: array
+              items:
+                $ref: '#/components/schemas/Sensor'
+            actuators:
+              type: array
+              items:
+                $ref: '#/components/schemas/Actuator'
+            api_key_prefix:
+              type: string
+              example: abcd1234
+              description: First 8 characters of API key
+
+    DeviceUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    DiscoverableDevice:
+      type: object
+      properties:
+        device_id:
+          type: string
+          description: Temporary ID for discovery
+        name:
+          type: string
+          example: ESP32-A1B2C3
+        signal_strength:
+          type: integer
+          description: WiFi signal strength (dBm)
+        firmware_version:
+          type: string
+
+    # Sensor Schemas
+    SensorDataPayload:
+      type: object
+      required: [device_id, readings, timestamp]
+      properties:
+        device_id:
+          type: string
+          format: uuid
+        readings:
+          type: array
+          items:
+            type: object
+            required: [sensor_id, value, unit]
+            properties:
+              sensor_id:
+                type: string
+                example: temp_1
+                description: ESP32-assigned sensor identifier
+              sensor_type:
+                type: string
+                enum: [temperature, humidity, soil_moisture, light_level, ph, ec, co2, custom]
+                example: temperature
+              value:
+                type: number
+                format: double
+                example: 22.5
+              unit:
+                type: string
+                example: C
+        timestamp:
+          type: string
+          format: date-time
+          description: Reading timestamp from ESP32
+
+    SensorDataResponse:
+      type: object
+      properties:
+        accepted_count:
+          type: integer
+          description: Number of readings accepted
+        rejected_count:
+          type: integer
+          description: Number of readings rejected (validation errors)
+        new_sensors_discovered:
+          type: array
+          items:
+            type: string
+          description: Sensor IDs that were auto-discovered and registered
+
+    Sensor:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        device_id:
+          type: string
+          format: uuid
+        sensor_id:
+          type: string
+          example: temp_1
+        sensor_type:
+          type: string
+          enum: [temperature, humidity, soil_moisture, light_level, ph, ec, co2, custom]
+        unit:
+          type: string
+          example: C
+        name:
+          type: string
+          nullable: true
+          example: Greenhouse Temperature
+        min_value:
+          type: number
+          format: double
+          nullable: true
+        max_value:
+          type: number
+          format: double
+          nullable: true
+        discovered_at:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+
+    SensorUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        min_value:
+          type: number
+          format: double
+        max_value:
+          type: number
+          format: double
+        is_active:
+          type: boolean
+
+    SensorReading:
+      type: object
+      properties:
+        sensor_id:
+          type: string
+          format: uuid
+        sensor_name:
+          type: string
+        sensor_type:
+          type: string
+        device_name:
+          type: string
+        value:
+          type: number
+          format: double
+        unit:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    # Actuator Schemas
+    ActuatorCommandRequest:
+      type: object
+      required: [actuator_id, command_type]
+      properties:
+        actuator_id:
+          type: string
+          format: uuid
+        command_type:
+          type: string
+          enum: [on, off, set_value]
+        value:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: PWM value (required if command_type = set_value)
+
+    ActuatorCommandResponse:
+      type: object
+      properties:
+        command_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          example: pending
+        estimated_delivery:
+          type: string
+          description: Estimated delivery time (based on device polling interval)
+          example: "within 60 seconds"
+
+    ActuatorCommand:
+      type: object
+      properties:
+        command_id:
+          type: string
+          format: uuid
+        actuator_id:
+          type: string
+          format: uuid
+        command_type:
+          type: string
+          enum: [on, off, set_value]
+        value:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CommandConfirmation:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        error_message:
+          type: string
+          nullable: true
+          description: Error message if success = false
+
+    Actuator:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        device_id:
+          type: string
+          format: uuid
+        actuator_id:
+          type: string
+          example: pump_1
+        actuator_type:
+          type: string
+          enum: [pump, fan, light, valve, heater, cooler, custom]
+        name:
+          type: string
+          nullable: true
+          example: Water Pump
+        current_state:
+          type: string
+          example: "off"
+          description: "Binary: 'on'/'off', PWM: 'on:75' (75% power)"
+        supports_pwm:
+          type: boolean
+        discovered_at:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+
+    ActuatorUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        is_active:
+          type: boolean
+
+    # Data Schemas
+    HistoricalDataResponse:
+      type: object
+      properties:
+        sensor_id:
+          type: string
+          format: uuid
+        sensor_name:
+          type: string
+        sensor_type:
+          type: string
+        unit:
+          type: string
+        aggregation:
+          type: string
+          enum: [raw, hourly, daily]
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        data_points:
+          type: array
+          items:
+            type: object
+            properties:
+              time:
+                type: string
+                format: date-time
+              value:
+                type: number
+                format: double
+              min_value:
+                type: number
+                format: double
+                description: Present if aggregation != raw
+              max_value:
+                type: number
+                format: double
+                description: Present if aggregation != raw
+
+    DataDeletionRequest:
+      type: object
+      required: [start_time, end_time]
+      properties:
+        device_id:
+          type: string
+          format: uuid
+          description: Delete data for all sensors on this device
+        sensor_id:
+          type: string
+          format: uuid
+          description: Delete data for specific sensor (mutually exclusive with device_id)
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+
+    # Error Schemas
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          example: validation_error
+        message:
+          type: string
+          example: Invalid request parameters
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error details
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Authentication required or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
