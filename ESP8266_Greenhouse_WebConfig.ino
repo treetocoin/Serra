@@ -32,6 +32,33 @@
  * 8. ESP8266 si riavvia con nuova configurazione!
  *
  * ================================================================================
+ * RESET CONFIGURAZIONE - DUE LIVELLI
+ * ================================================================================
+ *
+ * PULSANTE FLASH (GPIO0/D3):
+ *
+ * LIVELLO 1 - Reset WiFi (3-10 secondi):
+ * - Tieni premuto FLASH button
+ * - Dopo 3 secondi LED lampeggia VELOCE (ogni 100ms)
+ * - Rilascia pulsante PRIMA dei 10 secondi
+ * - ✅ WiFi resettato (configurazione sensori/attuatori CONSERVATA!)
+ * - ESP riavvia in modalità AP "Serra-Setup"
+ *
+ * LIVELLO 2 - Reset Completo (10+ secondi):
+ * - Tieni premuto FLASH button
+ * - Dopo 3 secondi LED lampeggia VELOCE
+ * - Continua a tenere premuto...
+ * - Dopo 10 secondi LED lampeggia LENTO (ogni 300ms)
+ * - LED lampeggia VELOCISSIMO = reset in corso!
+ * - ✅ WiFi + Sensori + Attuatori TUTTO CANCELLATO
+ * - ESP riavvia in modalità AP "Serra-Setup"
+ *
+ * Indicatori visivi:
+ * - 🟢 Lampeggio veloce (100ms) = WiFi reset ready
+ * - 🔵 Lampeggio lento (300ms) = Full reset ready
+ * - 🔴 Lampeggio velocissimo (30ms) = Reset in esecuzione
+ *
+ * ================================================================================
  * PIN GPIO MAPPING (NodeMCU) - SOLO PIN SICURI
  * ================================================================================
  *
@@ -153,7 +180,8 @@ struct DeviceConfig {
 #define WIFI_AP_NAME "Serra-Setup"
 #define WIFI_AP_PASSWORD ""
 #define WIFI_RESET_BUTTON D3
-#define WIFI_RESET_DURATION 3000
+#define WIFI_RESET_DURATION 3000      // 3 secondi = reset WiFi
+#define FULL_RESET_DURATION 10000     // 10 secondi = reset completo (WiFi + Config)
 
 // Firmware version
 const char* FIRMWARE_VERSION = "1.3.0";
@@ -400,15 +428,67 @@ void checkResetButton() {
     if (!buttonPressed) {
       buttonPressed = true;
       buttonPressStart = millis();
+      Serial.println("🔘 Reset button pressed...");
     }
 
-    if (millis() - buttonPressStart >= WIFI_RESET_DURATION) {
-      Serial.println("\n🔄 RESET WiFi!");
+    unsigned long pressDuration = millis() - buttonPressStart;
+
+    // LED lampeggia velocemente dopo 3 secondi (WiFi reset)
+    if (pressDuration >= WIFI_RESET_DURATION && pressDuration < FULL_RESET_DURATION) {
+      digitalWrite(LED_PIN, (millis() / 100) % 2);  // Lampeggio veloce
+    }
+
+    // LED lampeggia lentamente dopo 10 secondi (Full reset)
+    if (pressDuration >= FULL_RESET_DURATION) {
+      digitalWrite(LED_PIN, (millis() / 300) % 2);  // Lampeggio lento
+    }
+
+    // Reset completo dopo 10 secondi
+    if (pressDuration >= FULL_RESET_DURATION) {
+      Serial.println("\n🔥 FULL RESET - WiFi + Configuration!");
+
+      // LED lampeggia velocissimo
+      for (int i = 0; i < 30; i++) {
+        digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+        delay(30);
+      }
+
+      // Reset EEPROM configuration
+      resetConfiguration();
+
+      // Reset WiFi
       wifiManager.resetSettings();
+
+      Serial.println("✓ All settings erased - rebooting...");
+      delay(1000);
       ESP.restart();
     }
   } else {
-    buttonPressed = false;
+    // Rilascio pulsante
+    if (buttonPressed) {
+      unsigned long pressDuration = millis() - buttonPressStart;
+
+      // Reset WiFi se premuto 3-10 secondi
+      if (pressDuration >= WIFI_RESET_DURATION && pressDuration < FULL_RESET_DURATION) {
+        Serial.println("\n🔄 WiFi RESET ONLY!");
+
+        // LED lampeggia velocemente
+        for (int i = 0; i < 20; i++) {
+          digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+          delay(50);
+        }
+
+        wifiManager.resetSettings();
+        Serial.println("✓ WiFi settings erased - rebooting...");
+        delay(1000);
+        ESP.restart();
+      } else if (pressDuration < WIFI_RESET_DURATION) {
+        Serial.println("Button released (too short)");
+      }
+
+      buttonPressed = false;
+      digitalWrite(LED_PIN, LOW);  // LED on (stato normale)
+    }
   }
 }
 
@@ -609,51 +689,76 @@ void handleConfigPage() {
   html += "}";
 
   html += "function addSensorItem(s){";
-  html += "  const div=document.createElement('div');div.className='item';";
-  html += "  let pinOptions='';";
+  html += "  s=s||{};";
+  html += "  const div=document.createElement('div');";
+  html += "  div.className='item';";
   html += "  const sensorType=s.type||1;";
-  html += "  if(sensorType==3){";  // Soil moisture - only analog
-  html += "    pinOptions=`<option value='${analogPin.gpio}'>${analogPin.label} (${analogPin.type})</option>`;";
-  html += "  }else{";  // Digital sensors
+  html += "  let html='<button class=\\'remove-btn\\' onclick=\\'this.parentElement.remove()\\'>✕</button>';";
+  html += "  html+='<label>Sensor ID:</label>';";
+  html += "  html+='<input name=\\'sensor_id[]\\' value=\\''+(s.sensor_id||'')+'\\'  placeholder=\\'temp_1\\'>';";
+  html += "  html+='<div class=\\'help\\'>ID must match Supabase (es: temp_1, humidity_1)</div>';";
+  html += "  html+='<label>Type:</label>';";
+  html += "  html+='<select name=\\'sensor_type[]\\' onchange=\\'updateSensorPins(this)\\'>';";
+  html += "  html+='<option value=\\'1\\' '+(sensorType==1?'selected':'')+'>DHT22 Temperature</option>';";
+  html += "  html+='<option value=\\'2\\' '+(sensorType==2?'selected':'')+'>DHT22 Humidity</option>';";
+  html += "  html+='<option value=\\'3\\' '+(sensorType==3?'selected':'')+'>Soil Moisture</option>';";
+  html += "  html+='</select>';";
+  html += "  html+='<label>GPIO Pin:</label>';";
+  html += "  html+='<select name=\\'sensor_pin[]\\' class=\\'pin-select\\'>';";
+  html += "  if(sensorType==3){";
+  html += "    html+='<option value=\\'0\\'>A0 (ADC) (analog)</option>';";
+  html += "  }else{";
   html += "    safePins.forEach(p=>{";
-  html += "      const sel=s.pin==p.gpio?'selected':'';";
-  html += "      pinOptions+=`<option value='${p.gpio}' ${sel}>${p.label} (${p.type})</option>`;";
+  html += "      const sel=(s.pin==p.gpio)?'selected':'';";
+  html += "      html+='<option value=\\''+p.gpio+'\\' '+sel+'>'+p.label+' ('+p.type+')</option>';";
   html += "    });";
   html += "  }";
-  html += "  div.innerHTML=`<button class='remove-btn' onclick='this.parentElement.remove()'>✕</button>";
-  html += "  <label>Sensor ID:</label><input name='sensor_id[]' value='${s.sensor_id||''}' placeholder='temp_1'>";
-  html += "  <div class='help'>ID must match Supabase sensor_id (es: temp_1, humidity_1, soil_1)</div>";
-  html += "  <label>Type:</label><select name='sensor_type[]' onchange='this.closest(\".item\").remove();addSensorItem({sensor_id:this.closest(\".item\").querySelector(\"[name=\\\"sensor_id[]\\\"]\").value,type:parseInt(this.value),pin:4,dht_pair_index:0});'>";
-  html += "  <option value='1' ${sensorType==1?'selected':''}>DHT22 Temperature</option>";
-  html += "  <option value='2' ${sensorType==2?'selected':''}>DHT22 Humidity</option>";
-  html += "  <option value='3' ${sensorType==3?'selected':''}>Soil Moisture (Analog)</option>";
-  html += "  </select>";
-  html += "  <label>GPIO Pin:</label><select name='sensor_pin[]'>${pinOptions}</select>";
-  html += "  <label>DHT Pair Index (0-3):</label><input type='number' name='sensor_dht_pair[]' value='${s.dht_pair_index||0}' min='0' max='3'>`;";
+  html += "  html+='</select>';";
+  html += "  html+='<label>DHT Pair (0-3):</label>';";
+  html += "  html+='<input type=\\'number\\' name=\\'sensor_dht_pair[]\\' value=\\''+(s.dht_pair_index||0)+'\\' min=\\'0\\' max=\\'3\\'>';";
   html += "  if(sensorType==1||sensorType==2){";
-  html += "    div.innerHTML+=`<div class='help'>DHT22 temp and humidity must share same pin and pair index</div>`;";
-  html += "  }else{";
-  html += "    div.innerHTML+=`<div class='help'>Pair index not used for this sensor type</div>`;";
+  html += "    html+='<div class=\\'help\\'>DHT temp+hum must share pin and pair index</div>';";
   html += "  }";
+  html += "  div.innerHTML=html;";
   html += "  document.getElementById('sensorList').appendChild(div);";
+  html += "}";
+  html += "function updateSensorPins(sel){";
+  html += "  const type=parseInt(sel.value);";
+  html += "  const pinSel=sel.parentElement.querySelector('.pin-select');";
+  html += "  let html='';";
+  html += "  if(type==3){";
+  html += "    html='<option value=\\'0\\'>A0 (ADC) (analog)</option>';";
+  html += "  }else{";
+  html += "    safePins.forEach(p=>{";
+  html += "      html+='<option value=\\''+p.gpio+'\\'> '+p.label+' ('+p.type+')</option>';";
+  html += "    });";
+  html += "  }";
+  html += "  pinSel.innerHTML=html;";
   html += "}";
 
   html += "function addActuatorItem(a){";
-  html += "  const div=document.createElement('div');div.className='item';";
-  html += "  let pinOptions='';";
+  html += "  a=a||{};";
+  html += "  const div=document.createElement('div');";
+  html += "  div.className='item';";
+  html += "  const actType=a.type||1;";
+  html += "  let html='<button class=\\'remove-btn\\' onclick=\\'this.parentElement.remove()\\'>✕</button>';";
+  html += "  html+='<label>Actuator ID:</label>';";
+  html += "  html+='<input name=\\'actuator_id[]\\' value=\\''+(a.actuator_id||'')+'\\'  placeholder=\\'pump_1\\'>';";
+  html += "  html+='<div class=\\'help\\'>ID must match Supabase (es: pump_1, fan_1)</div>';";
+  html += "  html+='<label>Type:</label>';";
+  html += "  html+='<select name=\\'actuator_type[]\\'>';";
+  html += "  html+='<option value=\\'1\\' '+(actType==1?'selected':'')+'>Relay NO (ON=HIGH)</option>';";
+  html += "  html+='<option value=\\'2\\' '+(actType==2?'selected':'')+'>Relay NC (ON=LOW)</option>';";
+  html += "  html+='<option value=\\'3\\' '+(actType==3?'selected':'')+'>PWM (0-255)</option>';";
+  html += "  html+='</select>';";
+  html += "  html+='<label>GPIO Pin:</label>';";
+  html += "  html+='<select name=\\'actuator_pin[]\\'>';";
   html += "  safePins.forEach(p=>{";
-  html += "    const sel=a.pin==p.gpio?'selected':'';";
-  html += "    pinOptions+=`<option value='${p.gpio}' ${sel}>${p.label} (${p.type})</option>`;";
+  html += "    const sel=(a.pin==p.gpio)?'selected':'';";
+  html += "    html+='<option value=\\''+p.gpio+'\\' '+sel+'>'+p.label+' ('+p.type+')</option>';";
   html += "  });";
-  html += "  div.innerHTML=`<button class='remove-btn' onclick='this.parentElement.remove()'>✕</button>";
-  html += "  <label>Actuator ID:</label><input name='actuator_id[]' value='${a.actuator_id||''}' placeholder='pump_1'>";
-  html += "  <div class='help'>ID must match Supabase actuator_id (es: pump_1, fan_1)</div>";
-  html += "  <label>Type:</label><select name='actuator_type[]'>";
-  html += "  <option value='1' ${a.type==1?'selected':''}>Relay NO (ON=HIGH)</option>";
-  html += "  <option value='2' ${a.type==2?'selected':''}>Relay NC (ON=LOW)</option>";
-  html += "  <option value='3' ${a.type==3?'selected':''}>PWM (0-255)</option>";
-  html += "  </select>";
-  html += "  <label>GPIO Pin:</label><select name='actuator_pin[]'>${pinOptions}</select>`;";
+  html += "  html+='</select>';";
+  html += "  div.innerHTML=html;";
   html += "  document.getElementById('actuatorList').appendChild(div);";
   html += "}";
 
