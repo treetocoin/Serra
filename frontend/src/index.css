@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@source "../src/**/*.{js,ts,jsx,tsx}";
+@source "../index.html";
+
+@layer base {
+  body {
+    min-height: 100vh;
+    background-color: rgb(249 250 251);
+    color: rgb(17 24 39);
+  }
+
+  body.dark {
+    background-color: rgb(17 24 39);
+    color: rgb(243 244 246);
+  }
+}
