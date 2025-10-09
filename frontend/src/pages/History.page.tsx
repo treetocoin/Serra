@@ -65,7 +65,7 @@ export function HistoryPage() {
   const { data: history, isLoading } = useQuery({
     queryKey: ['sensor-history-all', allSensors?.map((s) => s.id).join(','), timeRange],
     queryFn: async () => {
-      if (!allSensors || allSensors.length === 0) return [];
+      if (!allSensors || allSensors.length === 0) return { data: [], sensorNames: [] };
 
       const now = new Date();
       const startDate = new Date(now);
@@ -100,7 +100,7 @@ export function HistoryPage() {
       console.log('[History] Query result:', data?.length || 0, 'readings');
       if (error) console.error('[History] Query error:', error);
 
-      if (!data) return [];
+      if (!data) return { data: [], sensorNames: [] };
 
       // Group by timestamp
       const grouped = data.reduce((acc: any, reading) => {
@@ -282,7 +282,7 @@ export function HistoryPage() {
           </div>
 
           {/* Sensor Filters */}
-          {history && !Array.isArray(history) && history.sensorNames && history.sensorNames.length > 0 && (
+          {history && history.sensorNames && history.sensorNames.length > 0 && (
             <div className="bg-white shadow rounded-lg p-4">
               <h2 className="text-lg font-semibold text-gray-900 mb-3">
                 Sensori
@@ -327,7 +327,7 @@ export function HistoryPage() {
               <div className="flex items-center justify-center h-96">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
               </div>
-            ) : history && !Array.isArray(history) && history.data && history.data.length > 0 ? (
+            ) : history && history.data && history.data.length > 0 ? (
               <ResponsiveContainer width="100%" height={400}>
                 <LineChart data={history.data}>
                   <CartesianGrid strokeDasharray="3 3" />
