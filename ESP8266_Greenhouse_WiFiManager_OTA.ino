@@ -236,9 +236,6 @@ void setup() {
   wifiManager.setMinimumSignalQuality(20);  // Mostra solo reti con segnale decente
   wifiManager.setRemoveDuplicateAPs(true);  // Rimuovi SSID duplicati
 
-  // FIX: Disabilita scan nascosto per velocizzare
-  wifiManager.setScanDispOptions(false);
-
   // Messaggio personalizzato nel portale (SEMPLIFICATO per risparmiare memoria)
   String customHTML = "<p>Seleziona la tua rete WiFi dalla lista qui sotto.</p>";
   wifiManager.setCustomHeadElement(customHTML.c_str());
