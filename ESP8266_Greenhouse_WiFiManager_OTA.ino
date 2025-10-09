@@ -31,6 +31,28 @@
  * Non serve più Arduino IDE per cambiare WiFi.
  *
  * ================================================================================
+ * TROUBLESHOOTING - PAGINA BIANCA
+ * ================================================================================
+ *
+ * PROBLEMA: Dopo click su "Configure WiFi" vedi pagina bianca?
+ *
+ * CAUSE COMUNI:
+ * - ESP8266 ha poca RAM, la lista WiFi potrebbe essere troppo grande
+ * - Troppe reti WiFi nell'area (>10-15)
+ * - Versione WiFiManager non aggiornata
+ *
+ * SOLUZIONI:
+ * 1. Aspetta 10-15 secondi, la pagina potrebbe caricarsi lentamente
+ * 2. Ricarica la pagina (F5 o pull-down su mobile)
+ * 3. Prova browser diverso (Chrome su Android, Safari su iOS)
+ * 4. Controlla il Serial Monitor per errori durante scan WiFi
+ * 5. Verifica versione WiFiManager: deve essere v2.0.16-rc.2+
+ *
+ * SOLUZIONE ALTERNATIVA - WiFi Manuale:
+ * Se WiFiManager continua a dare problemi, usa ESP8266_Greenhouse_OTA.ino
+ * che ha le credenziali WiFi hardcoded ma supporta comunque OTA.
+ *
+ * ================================================================================
  * RESET CONFIGURAZIONE WiFi
  * ================================================================================
  *
@@ -196,21 +218,50 @@ void setup() {
   // WIFI MANAGER SETUP
   // ========================================
   Serial.println("Starting WiFiManager...");
-  
+
   // Reset settings per test (commenta in produzione)
   // wifiManager.resetSettings();
-  
+
+  // *** FIX CAPTIVE PORTAL + CONFIGURE WiFi PAGE ***
+  // Debug output per vedere cosa succede
+  wifiManager.setDebugOutput(true);
+
+  // Configurazione IP statico per AP
+  IPAddress apIP(192, 168, 4, 1);
+  IPAddress gateway(192, 168, 4, 1);
+  IPAddress subnet(255, 255, 255, 0);
+  wifiManager.setAPStaticIPConfig(apIP, gateway, subnet);
+
+  // FIX: Aumenta dimensione buffer per pagina WiFi list
+  wifiManager.setMinimumSignalQuality(20);  // Mostra solo reti con segnale decente
+  wifiManager.setRemoveDuplicateAPs(true);  // Rimuovi SSID duplicati
+
+  // FIX: Disabilita scan nascosto per velocizzare
+  wifiManager.setScanDispOptions(false);
+
+  // Messaggio personalizzato nel portale (SEMPLIFICATO per risparmiare memoria)
+  String customHTML = "<p>Seleziona la tua rete WiFi dalla lista qui sotto.</p>";
+  wifiManager.setCustomHeadElement(customHTML.c_str());
+
   // Callback quando entra in modalità AP
   wifiManager.setAPCallback([](WiFiManager *myWiFiManager) {
-    Serial.println("\n════════════════════════════════");
-    Serial.println("MODALITÀ CONFIGURAZIONE WiFi");
-    Serial.println("════════════════════════════════");
-    Serial.print("Access Point: ");
+    Serial.println("\n╔═══════════════════════════════════╗");
+    Serial.println("║  MODALITÀ CONFIGURAZIONE WiFi     ║");
+    Serial.println("╚═══════════════════════════════════╝");
+    Serial.println("");
+    Serial.print("📡 Access Point: ");
     Serial.println(myWiFiManager->getConfigPortalSSID());
-    Serial.println("Password: (nessuna)");
-    Serial.println("Portale: http://192.168.4.1");
-    Serial.println("════════════════════════════════\n");
-    
+    Serial.println("🔓 Password: (nessuna - aperto)");
+    Serial.println("");
+    Serial.println("🌐 APRI IL BROWSER E VAI SU:");
+    Serial.println("   http://192.168.4.1");
+    Serial.println("");
+    Serial.println("📱 Su smartphone potrebbe aprirsi");
+    Serial.println("   automaticamente il portale.");
+    Serial.println("   Altrimenti apri browser manualmente");
+    Serial.println("");
+    Serial.println("═══════════════════════════════════\n");
+
     // LED lampeggia in modalità configurazione
     for (int i = 0; i < 20; i++) {
       digitalWrite(LED_PIN, !digitalRead(LED_PIN));
@@ -218,10 +269,17 @@ void setup() {
     }
   });
 
-  // Timeout portale configurazione (3 minuti)
-  wifiManager.setConfigPortalTimeout(180);
+  // Timeout portale configurazione (5 minuti invece di 3)
+  wifiManager.setConfigPortalTimeout(300);
+
+  // FIX: Timeout più lungo per WiFi scan (alcuni router sono lenti)
+  wifiManager.setConnectTimeout(30);  // 30 secondi per connessione
+
+  // FIX: Numero limitato di reti WiFi da mostrare per risparmiare memoria
+  wifiManager.setShowInfoUpdate(false);  // Non mostrare info aggiuntive
 
   // Prova a connettersi, se fallisce apre AP configurazione
+  Serial.println("Tentativo auto-connessione...");
   if (!wifiManager.autoConnect(WIFI_AP_NAME, WIFI_AP_PASSWORD)) {
     Serial.println("✗ Timeout configurazione - riavvio...");
     delay(3000);
