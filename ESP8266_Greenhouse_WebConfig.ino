@@ -32,17 +32,26 @@
  * 8. ESP8266 si riavvia con nuova configurazione!
  *
  * ================================================================================
- * PIN GPIO MAPPING (NodeMCU)
+ * PIN GPIO MAPPING (NodeMCU) - SOLO PIN SICURI
  * ================================================================================
  *
- * D0 = GPIO16   D5 = GPIO14   A0 = ADC (solo input analogico)
- * D1 = GPIO5    D6 = GPIO12
- * D2 = GPIO4    D7 = GPIO13
- * D3 = GPIO0    D8 = GPIO15
- * D4 = GPIO2
+ * PIN DISPONIBILI NELL'INTERFACCIA WEB:
  *
- * IMPORTANTE: GPIO0 (D3), GPIO2 (D4), GPIO15 (D8) hanno funzioni speciali
- * al boot. Preferisci D1, D2, D5, D6, D7 per sensori/attuatori.
+ * DIGITALI (sensori/attuatori):
+ * - D1 = GPIO5  ✅ Safe
+ * - D2 = GPIO4  ✅ Safe
+ * - D5 = GPIO14 ✅ Safe
+ * - D6 = GPIO12 ✅ Safe
+ * - D7 = GPIO13 ✅ Safe
+ *
+ * ANALOGICI (solo sensori):
+ * - A0 = ADC    ✅ Safe (0-1V, max 3.3V con voltage divider)
+ *
+ * PIN NON DISPONIBILI (funzioni speciali al boot):
+ * - D0 = GPIO16 ❌ No PWM, no interrupts
+ * - D3 = GPIO0  ❌ Boot mode (deve essere HIGH)
+ * - D4 = GPIO2  ❌ Boot mode + LED interno
+ * - D8 = GPIO15 ❌ Boot mode (deve essere LOW)
  *
  * ================================================================================
  * TIPI SENSORI SUPPORTATI
@@ -145,6 +154,10 @@ struct DeviceConfig {
 #define WIFI_AP_PASSWORD ""
 #define WIFI_RESET_BUTTON D3
 #define WIFI_RESET_DURATION 3000
+
+// Firmware version
+const char* FIRMWARE_VERSION = "1.3.0";
+const char* GITHUB_REPO = "treetocoin/Serra";
 
 // mDNS & OTA
 const char* MDNS_HOSTNAME = "serrasetup";      // Accesso via http://serrasetup.local
@@ -468,19 +481,38 @@ void handleRoot() {
   html += ".btn:hover{background:#0a4;}";
   html += ".btn-warning{background:#f90;}";
   html += ".btn-danger{background:#d33;}";
+  html += ".btn-info{background:#17a2b8;}";
   html += ".status{display:inline-block;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:bold;}";
   html += ".status-ok{background:#0c5;color:white;}";
   html += ".status-warn{background:#f90;color:white;}";
-  html += "</style></head><body>";
+  html += ".update-info{background:#e7f3ff;border-left:4px solid #17a2b8;padding:12px;margin:10px 0;border-radius:4px;}";
+  html += "</style>";
+  html += "<script>";
+  html += "function checkUpdate(){";
+  html += "  const btn=document.getElementById('updateBtn');";
+  html += "  btn.textContent='⏳ Checking...';";
+  html += "  btn.disabled=true;";
+  html += "  window.open('https://github.com/" + String(GITHUB_REPO) + "/releases','_blank');";
+  html += "  setTimeout(()=>{";
+  html += "    if(confirm('Have you downloaded the latest .ino file?\\n\\nClick OK to open the upload page.')){";
+  html += "      window.location.href='/update';";
+  html += "    }else{";
+  html += "      btn.textContent='🔄 Check for Updates';";
+  html += "      btn.disabled=false;";
+  html += "    }";
+  html += "  },2000);";
+  html += "}";
+  html += "</script></head><body>";
 
-  html += "<h1>🌱 Serra ESP8266 v1.3</h1>";
+  html += "<h1>🌱 Serra ESP8266 v" + String(FIRMWARE_VERSION) + "</h1>";
 
   // Status card
   html += "<div class='card'>";
   html += "<h2>System Status</h2>";
   html += "<table>";
   html += "<tr><td><b>Device ID</b></td><td>" + String(DEVICE_ID) + "</td></tr>";
-  html += "<tr><td><b>Firmware</b></td><td>v1.3 - Web Config</td></tr>";
+  html += "<tr><td><b>Firmware</b></td><td>v" + String(FIRMWARE_VERSION) + " - Web Config</td></tr>";
+  html += "<tr><td><b>mDNS</b></td><td><a href='http://" + String(MDNS_HOSTNAME) + ".local'>http://" + String(MDNS_HOSTNAME) + ".local</a></td></tr>";
   html += "<tr><td><b>WiFi SSID</b></td><td>" + WiFi.SSID() + "</td></tr>";
   html += "<tr><td><b>IP Address</b></td><td>" + WiFi.localIP().toString() + "</td></tr>";
   html += "<tr><td><b>Signal</b></td><td>" + String(WiFi.RSSI()) + " dBm</td></tr>";
@@ -510,11 +542,26 @@ void handleRoot() {
   html += "</table>";
   html += "</div>";
 
+  // Update info
+  html += "<div class='card'>";
+  html += "<h2>Firmware Update</h2>";
+  html += "<div class='update-info'>";
+  html += "<b>📦 Current Version:</b> " + String(FIRMWARE_VERSION) + "<br>";
+  html += "<b>📂 Repository:</b> <a href='https://github.com/" + String(GITHUB_REPO) + "' target='_blank'>" + String(GITHUB_REPO) + "</a><br><br>";
+  html += "<b>How to update:</b><br>";
+  html += "1. Click 'Check for Updates' to open GitHub releases<br>";
+  html += "2. Download latest ESP8266_Greenhouse_WebConfig.ino<br>";
+  html += "3. Compile in Arduino IDE and export .bin<br>";
+  html += "4. Upload via web interface (username: admin, password: serra2025)";
+  html += "</div>";
+  html += "<button id='updateBtn' class='btn btn-info' onclick='checkUpdate()'>🔄 Check for Updates</button>";
+  html += "</div>";
+
   // Actions
   html += "<div class='card'>";
   html += "<h2>Actions</h2>";
   html += "<a href='/config' class='btn'>⚙️ Configure Sensors/Actuators</a>";
-  html += "<a href='/update' class='btn btn-warning'>📤 Firmware Update</a>";
+  html += "<a href='/update' class='btn btn-warning'>📤 Upload Firmware</a>";
   html += "<a href='/resetwifi' class='btn btn-danger'>🔄 Reset WiFi</a>";
   html += "</div>";
 
@@ -538,8 +585,20 @@ void handleConfigPage() {
   html += ".btn-danger{background:#d33;}";
   html += ".item{border:1px solid #e0e0e0;padding:10px;margin:10px 0;border-radius:4px;background:#f9f9f9;}";
   html += ".remove-btn{background:#d33;color:white;border:none;padding:5px 10px;border-radius:3px;cursor:pointer;float:right;}";
+  html += ".help{font-size:12px;color:#666;margin-top:5px;}";
   html += "</style>";
   html += "<script>";
+
+  // Pin configuration - safe pins only
+  html += "const safePins=[";
+  html += "{gpio:5,label:'D1 (GPIO5)',type:'digital'},";
+  html += "{gpio:4,label:'D2 (GPIO4)',type:'digital'},";
+  html += "{gpio:14,label:'D5 (GPIO14)',type:'digital'},";
+  html += "{gpio:12,label:'D6 (GPIO12)',type:'digital'},";
+  html += "{gpio:13,label:'D7 (GPIO13)',type:'digital'}";
+  html += "];";
+  html += "const analogPin={gpio:0,label:'A0 (ADC)',type:'analog'};";
+
   html += "function loadConfig(){";
   html += "  fetch('/api/config').then(r=>r.json()).then(data=>{";
   html += "    document.getElementById('sensorList').innerHTML='';";
@@ -548,31 +607,56 @@ void handleConfigPage() {
   html += "    data.actuators.forEach((a,i)=>addActuatorItem(a));";
   html += "  });";
   html += "}";
+
   html += "function addSensorItem(s){";
   html += "  const div=document.createElement('div');div.className='item';";
+  html += "  let pinOptions='';";
+  html += "  const sensorType=s.type||1;";
+  html += "  if(sensorType==3){";  // Soil moisture - only analog
+  html += "    pinOptions=`<option value='${analogPin.gpio}'>${analogPin.label} (${analogPin.type})</option>`;";
+  html += "  }else{";  // Digital sensors
+  html += "    safePins.forEach(p=>{";
+  html += "      const sel=s.pin==p.gpio?'selected':'';";
+  html += "      pinOptions+=`<option value='${p.gpio}' ${sel}>${p.label} (${p.type})</option>`;";
+  html += "    });";
+  html += "  }";
   html += "  div.innerHTML=`<button class='remove-btn' onclick='this.parentElement.remove()'>✕</button>";
   html += "  <label>Sensor ID:</label><input name='sensor_id[]' value='${s.sensor_id||''}' placeholder='temp_1'>";
-  html += "  <label>Type:</label><select name='sensor_type[]'>";
-  html += "  <option value='1' ${s.type==1?'selected':''}>DHT22 Temperature</option>";
-  html += "  <option value='2' ${s.type==2?'selected':''}>DHT22 Humidity</option>";
-  html += "  <option value='3' ${s.type==3?'selected':''}>Soil Moisture (A0)</option>";
+  html += "  <div class='help'>ID must match Supabase sensor_id (es: temp_1, humidity_1, soil_1)</div>";
+  html += "  <label>Type:</label><select name='sensor_type[]' onchange='this.closest(\".item\").remove();addSensorItem({sensor_id:this.closest(\".item\").querySelector(\"[name=\\\"sensor_id[]\\\"]\").value,type:parseInt(this.value),pin:4,dht_pair_index:0});'>";
+  html += "  <option value='1' ${sensorType==1?'selected':''}>DHT22 Temperature</option>";
+  html += "  <option value='2' ${sensorType==2?'selected':''}>DHT22 Humidity</option>";
+  html += "  <option value='3' ${sensorType==3?'selected':''}>Soil Moisture (Analog)</option>";
   html += "  </select>";
-  html += "  <label>GPIO Pin:</label><input type='number' name='sensor_pin[]' value='${s.pin||4}' min='0' max='16'>";
-  html += "  <label>DHT Pair Index (0-3, for DHT22 only):</label><input type='number' name='sensor_dht_pair[]' value='${s.dht_pair_index||0}' min='0' max='3'>`;";
+  html += "  <label>GPIO Pin:</label><select name='sensor_pin[]'>${pinOptions}</select>";
+  html += "  <label>DHT Pair Index (0-3):</label><input type='number' name='sensor_dht_pair[]' value='${s.dht_pair_index||0}' min='0' max='3'>`;";
+  html += "  if(sensorType==1||sensorType==2){";
+  html += "    div.innerHTML+=`<div class='help'>DHT22 temp and humidity must share same pin and pair index</div>`;";
+  html += "  }else{";
+  html += "    div.innerHTML+=`<div class='help'>Pair index not used for this sensor type</div>`;";
+  html += "  }";
   html += "  document.getElementById('sensorList').appendChild(div);";
   html += "}";
+
   html += "function addActuatorItem(a){";
   html += "  const div=document.createElement('div');div.className='item';";
+  html += "  let pinOptions='';";
+  html += "  safePins.forEach(p=>{";
+  html += "    const sel=a.pin==p.gpio?'selected':'';";
+  html += "    pinOptions+=`<option value='${p.gpio}' ${sel}>${p.label} (${p.type})</option>`;";
+  html += "  });";
   html += "  div.innerHTML=`<button class='remove-btn' onclick='this.parentElement.remove()'>✕</button>";
   html += "  <label>Actuator ID:</label><input name='actuator_id[]' value='${a.actuator_id||''}' placeholder='pump_1'>";
+  html += "  <div class='help'>ID must match Supabase actuator_id (es: pump_1, fan_1)</div>";
   html += "  <label>Type:</label><select name='actuator_type[]'>";
   html += "  <option value='1' ${a.type==1?'selected':''}>Relay NO (ON=HIGH)</option>";
   html += "  <option value='2' ${a.type==2?'selected':''}>Relay NC (ON=LOW)</option>";
-  html += "  <option value='3' ${a.type==3?'selected':''}>PWM</option>";
+  html += "  <option value='3' ${a.type==3?'selected':''}>PWM (0-255)</option>";
   html += "  </select>";
-  html += "  <label>GPIO Pin:</label><input type='number' name='actuator_pin[]' value='${a.pin||14}' min='0' max='16'>`;";
+  html += "  <label>GPIO Pin:</label><select name='actuator_pin[]'>${pinOptions}</select>`;";
   html += "  document.getElementById('actuatorList').appendChild(div);";
   html += "}";
+
   html += "function saveConfig(){";
   html += "  const form=document.getElementById('configForm');";
   html += "  const formData=new FormData(form);";
