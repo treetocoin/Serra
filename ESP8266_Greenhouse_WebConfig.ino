@@ -17,9 +17,10 @@
  *
  * 1. Carica firmware via USB
  * 2. Connetti al WiFi tramite WiFiManager (come v1.2)
- * 3. Vai su http://serrasetup.local (sempre lo stesso nome!)
- *    Se non funziona: controlla IP sul Serial Monitor
- * 4. Click "⚙️ Configure Sensors/Actuators"
+ * 3. Controlla Serial Monitor per vedere hostname univoco
+ *    Esempio: http://serrasetup-a1b2.local
+ * 4. Vai su quell'indirizzo nel browser
+ * 5. Click "⚙️ Configure Sensors/Actuators"
  * 5. Aggiungi sensori:
  *    - Tipo: DHT22_TEMP, DHT22_HUM, SOIL_MOISTURE
  *    - Pin GPIO (es: D2 = GPIO4)
@@ -57,6 +58,32 @@
  * - 🟢 Lampeggio veloce (100ms) = WiFi reset ready
  * - 🔵 Lampeggio lento (300ms) = Full reset ready
  * - 🔴 Lampeggio velocissimo (30ms) = Reset in esecuzione
+ *
+ * ================================================================================
+ * PIÙ SCHEDE SULLA STESSA RETE WiFi
+ * ================================================================================
+ *
+ * HOSTNAME UNIVOCI AUTOMATICI:
+ * Ogni ESP8266 genera hostname univoco basato sul MAC address.
+ *
+ * Esempi:
+ * - Prima scheda:  http://serrasetup-a1b2.local
+ * - Seconda scheda: http://serrasetup-c3d4.local
+ * - Terza scheda:   http://serrasetup-e5f6.local
+ *
+ * COME TROVARE IL TUO HOSTNAME:
+ * 1. Apri Serial Monitor (115200 baud)
+ * 2. Riavvia ESP8266
+ * 3. Cerca riga: "📡 Hostname: serrasetup-XXXX.local"
+ * 4. Usa quell'indirizzo nel browser
+ *
+ * NOTA: Il suffisso -XXXX deriva dagli ultimi 2 byte del MAC address
+ * ed è PERMANENTE per ogni scheda (non cambia mai).
+ *
+ * ACCESSO VIA IP (alternativa):
+ * Se mDNS non funziona sul tuo device, usa l'IP diretto:
+ * - Controlla Serial Monitor per IP
+ * - Esempio: http://192.168.1.123
  *
  * ================================================================================
  * PIN GPIO MAPPING (NodeMCU) - SOLO PIN SICURI
@@ -188,7 +215,8 @@ const char* FIRMWARE_VERSION = "1.3.0";
 const char* GITHUB_REPO = "treetocoin/Serra";
 
 // mDNS & OTA
-const char* MDNS_HOSTNAME = "serrasetup";      // Accesso via http://serrasetup.local
+const char* MDNS_HOSTNAME_BASE = "serrasetup";  // Base hostname
+char MDNS_HOSTNAME[32];                         // Hostname univoco: serrasetup-XXXX.local
 const char* OTA_PASSWORD = "serra2025";
 
 // Supabase
@@ -317,6 +345,13 @@ void setup() {
   Serial.println("Serra System v1.3");
   Serial.println("Web Configuration");
   Serial.println("=================================\n");
+
+  // Generate unique hostname from MAC address
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  snprintf(MDNS_HOSTNAME, sizeof(MDNS_HOSTNAME), "%s-%02x%02x",
+           MDNS_HOSTNAME_BASE, mac[4], mac[5]);
+  Serial.printf("📡 Hostname: %s.local\n\n", MDNS_HOSTNAME);
 
   pinMode(LED_PIN, OUTPUT);
   pinMode(WIFI_RESET_BUTTON, INPUT_PULLUP);
@@ -896,7 +931,10 @@ void sendHeartbeat() {
   http.addHeader("apikey", API_KEY);
   http.addHeader("Authorization", "Bearer " + String(API_KEY));
 
-  String payload = "{\"device_id_param\":\"" + String(DEVICE_ID) + "\"}";
+  // Include hostname in heartbeat
+  String hostnameUrl = "http://" + String(MDNS_HOSTNAME) + ".local";
+  String payload = "{\"device_id_param\":\"" + String(DEVICE_ID) + "\",";
+  payload += "\"hostname_param\":\"" + hostnameUrl + "\"}";
   int httpCode = http.POST(payload);
 
   if (httpCode == 200) {
