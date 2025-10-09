@@ -197,6 +197,33 @@ class ActuatorsService {
 
     return configs[status] || { label: status, color: 'text-gray-600' };
   }
+
+  /**
+   * Update actuator name and description (Feature 002)
+   */
+  async updateActuator(
+    actuatorId: string,
+    updates: { name?: string; description?: string }
+  ): Promise<{
+    actuator: Actuator | null;
+    error: Error | null;
+  }> {
+    try {
+      const { data: actuator, error } = await supabase
+        .from('actuators')
+        .update(updates)
+        .eq('id', actuatorId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return { actuator, error: null };
+    } catch (error) {
+      console.error('Error updating actuator:', error);
+      return { actuator: null, error: error as Error };
+    }
+  }
 }
 
 export const actuatorsService = new ActuatorsService();

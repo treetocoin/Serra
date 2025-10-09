@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../lib/hooks/useAuth';
 import { devicesService } from '../services/devices.service';
 import { sensorsService } from '../services/sensors.service';
-import { LogOut, Home, Cpu, Thermometer, Zap, BarChart3 } from 'lucide-react';
+import { LogOut, Home, Cpu, Thermometer, Zap, BarChart3, Settings } from 'lucide-react';
 
 export function DashboardPage() {
   const { user, signOut } = useAuth();
@@ -107,15 +107,30 @@ export function DashboardPage() {
               )}
               <p className="text-xs text-blue-600 mt-2">Clicca per gestire →</p>
             </Link>
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <Link
+              to="/actuators"
+              className="bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-purple-500 hover:shadow-md transition-all cursor-pointer"
+            >
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-medium text-gray-900">Attuatori</h3>
                 <Zap className="h-5 w-5 text-purple-600" />
               </div>
-              <p className="text-sm text-gray-600">Controlla le tue apparecchiature</p>
-              <p className="text-2xl font-bold text-purple-600 mt-2">0</p>
-              <p className="text-xs text-gray-500 mt-1">Prossimamente</p>
-            </div>
+              <p className="text-sm text-gray-600">Gestisci i tuoi attuatori</p>
+              <p className="text-2xl font-bold text-purple-600 mt-2">⚡</p>
+              <p className="text-xs text-purple-600 mt-2">Clicca per gestire →</p>
+            </Link>
+            <Link
+              to="/automation"
+              className="bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-medium text-gray-900">Automazione</h3>
+                <Settings className="h-5 w-5 text-indigo-600" />
+              </div>
+              <p className="text-sm text-gray-600">Regole di automazione</p>
+              <p className="text-2xl font-bold text-indigo-600 mt-2">🤖</p>
+              <p className="text-xs text-indigo-600 mt-2">Clicca per gestire →</p>
+            </Link>
             <Link
               to="/history"
               className="bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-green-500 hover:shadow-md transition-all cursor-pointer"

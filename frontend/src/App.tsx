@@ -13,6 +13,8 @@ import { DevicesPage } from './pages/Devices.page';
 import { DeviceDetailPage } from './pages/DeviceDetail.page';
 import { HistoryPage } from './pages/History.page';
 import { SensorsPage } from './pages/Sensors.page';
+import { ActuatorsPage } from './pages/Actuators.page';
+import { AutomationPage } from './pages/Automation.page';
 
 // Create React Query client
 const queryClient = new QueryClient({
@@ -82,6 +84,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <SensorsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/actuators"
+              element={
+                <ProtectedRoute>
+                  <ActuatorsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/automation"
+              element={
+                <ProtectedRoute>
+                  <AutomationPage />
                 </ProtectedRoute>
               }
             />
