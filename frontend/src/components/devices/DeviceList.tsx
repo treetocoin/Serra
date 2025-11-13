@@ -15,12 +15,11 @@ export function DeviceList() {
   } = useQuery({
     queryKey: ['devices', user?.id],
     queryFn: async () => {
-      if (!user) return [];
-      const { devices, error } = await devicesService.getDevices(user.id);
+      const { devices, error } = await devicesService.getDevices(user?.id);
       if (error) throw error;
       return devices;
     },
-    enabled: !!user,
+    enabled: !!user, // Only fetch when user is authenticated
     refetchInterval: 30000, // Refetch every 30 seconds to update device status
   });
 

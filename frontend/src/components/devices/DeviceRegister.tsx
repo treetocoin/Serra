@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { PlusCircle, Copy, Check } from 'lucide-react';
-import { useAuth } from '../../lib/hooks/useAuth';
 import { devicesService } from '../../services/devices.service';
 import { cn } from '../../utils/cn';
+import { Toast } from '../common/Toast';
 
 interface DeviceRegisterProps {
   onDeviceRegistered: () => void;
@@ -12,41 +12,41 @@ export function DeviceRegister({ onDeviceRegistered }: DeviceRegisterProps) {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [deviceKey, setDeviceKey] = useState<string | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
-  const [copiedApiKey, setCopiedApiKey] = useState(false);
+  const [copiedDeviceKey, setCopiedDeviceKey] = useState(false);
   const [copiedDeviceId, setCopiedDeviceId] = useState(false);
-  const { user } = useAuth();
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
 
     setError(null);
     setLoading(true);
 
-    const { device, error } = await devicesService.registerDevice({
-      name,
-      userId: user.id,
-    });
+    try {
+      const response = await devicesService.registerDevice({
+        name,
+      });
 
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-    } else if (device?.apiKey) {
-      setApiKey(device.apiKey);
-      setDeviceId(device.id);
+      setDeviceKey(response.device.deviceKey);
+      setDeviceId(response.device.id);
       setName('');
       setLoading(false);
+      // Show success notification
+      setShowSuccessToast(true);
       onDeviceRegistered();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to register device');
+      setLoading(false);
     }
   };
 
-  const handleCopyApiKey = () => {
-    if (apiKey) {
-      navigator.clipboard.writeText(apiKey);
-      setCopiedApiKey(true);
-      setTimeout(() => setCopiedApiKey(false), 2000);
+  const handleCopyDeviceKey = () => {
+    if (deviceKey) {
+      navigator.clipboard.writeText(deviceKey);
+      setCopiedDeviceKey(true);
+      setTimeout(() => setCopiedDeviceKey(false), 2000);
     }
   };
 
@@ -59,17 +59,18 @@ export function DeviceRegister({ onDeviceRegistered }: DeviceRegisterProps) {
   };
 
   const handleClose = () => {
-    setApiKey(null);
+    setDeviceKey(null);
     setDeviceId(null);
-    setCopiedApiKey(false);
+    setCopiedDeviceKey(false);
     setCopiedDeviceId(false);
   };
 
   return (
-    <div className="bg-white shadow rounded-lg p-6">
-      <h2 className="text-xl font-semibold text-gray-900 mb-4">Registra Nuovo Dispositivo</h2>
+    <>
+      <div className="bg-white shadow rounded-lg p-6">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Registra Nuovo Dispositivo</h2>
 
-      {!apiKey ? (
+      {!deviceKey ? (
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
@@ -138,28 +139,28 @@ export function DeviceRegister({ onDeviceRegistered }: DeviceRegisterProps) {
           </div>
 
           <div className="bg-gray-50 border border-gray-300 rounded-md p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Chiave API</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Device Key</label>
             <div className="flex items-center space-x-2">
               <code className="flex-1 bg-white border border-gray-300 rounded px-3 py-2 text-sm font-mono break-all">
-                {apiKey}
+                {deviceKey}
               </code>
               <button
-                onClick={handleCopyApiKey}
+                onClick={handleCopyDeviceKey}
                 className={cn(
                   'px-3 py-2 rounded-md transition-colors',
-                  copiedApiKey
+                  copiedDeviceKey
                     ? 'bg-green-600 text-white'
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                 )}
               >
-                {copiedApiKey ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5" />}
+                {copiedDeviceKey ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5" />}
               </button>
             </div>
           </div>
 
           <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-md">
             <p className="text-sm text-yellow-800">
-              <strong>Importante:</strong> Copia sia l'ID Dispositivo che la chiave API ora. Configurali nel firmware del tuo ESP8266/ESP32 per autenticare le richieste del dispositivo.
+              <strong>Importante:</strong> Copia sia l'ID Dispositivo che la Device Key ora. Configurali nel firmware del tuo ESP8266/ESP32 per autenticare le richieste del dispositivo.
             </p>
           </div>
 
@@ -171,6 +172,17 @@ export function DeviceRegister({ onDeviceRegistered }: DeviceRegisterProps) {
           </button>
         </div>
       )}
-    </div>
+      </div>
+
+      {/* Success Toast Notification */}
+      {showSuccessToast && (
+        <Toast
+          message="Device registered successfully!"
+          type="success"
+          onClose={() => setShowSuccessToast(false)}
+          duration={5000}
+        />
+      )}
+    </>
   );
 }

@@ -1,93 +1,57 @@
-import { useState } from 'react';
-import { Settings, Check } from 'lucide-react';
-import { devicesService } from '../../services/devices.service';
-import { cn } from '../../utils/cn';
+import { ExternalLink, Info } from 'lucide-react';
 
 interface DeviceSetupProps {
   deviceId: string;
   deviceName: string;
   hasSensors: boolean;
-  onSetupComplete: () => void;
+  deviceHostname?: string;
 }
 
-export function DeviceSetup({ deviceId, deviceName, hasSensors, onSetupComplete }: DeviceSetupProps) {
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSetupSensors = async () => {
-    setLoading(true);
-    setError(null);
-    setSuccess(false);
-
-    const { error: err } = await devicesService.requestSensorConfiguration(deviceId);
-
-    if (err) {
-      setError(err.message);
-      setLoading(false);
-    } else {
-      setSuccess(true);
-      setLoading(false);
-
-      // Notify parent to refresh
-      setTimeout(() => {
-        onSetupComplete();
-        setSuccess(false);
-      }, 3000);
-    }
-  };
+export function DeviceSetup({ deviceId, deviceName, hasSensors, deviceHostname }: DeviceSetupProps) {
 
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
       <div className="flex items-start space-x-4">
         <div className="flex-shrink-0">
-          <Settings className="h-8 w-8 text-blue-600" />
+          <Info className="h-8 w-8 text-blue-600" />
         </div>
         <div className="flex-1">
           <h3 className="text-lg font-semibold text-blue-900 mb-2">
-            Rilevamento Sensori e Attuatori
+            Configurazione Sensori
           </h3>
 
-          {!success ? (
-            <>
-              <p className="text-sm text-blue-800 mb-4">
-                {hasSensors
-                  ? `Clicca il pulsante per rilevare nuovi sensori o attuatori collegati al dispositivo ${deviceName}.`
-                  : `Il tuo dispositivo ${deviceName} è online e pronto. Clicca il pulsante per rilevare e registrare tutti i sensori e gli attuatori collegati.`
-                }
-              </p>
+          <p className="text-sm text-blue-800 mb-4">
+            {hasSensors
+              ? 'Per aggiungere nuovi sensori, accedi alla pagina di configurazione del dispositivo ESP tramite il link qui sopra (sezione "Configurazione ESP").'
+              : `Il dispositivo ${deviceName} è online e pronto. Accedi alla pagina di configurazione del dispositivo ESP tramite il link qui sopra per configurare i pin dei sensori.`
+            }
+          </p>
 
-              {error && (
-                <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
-                  {error}
-                </div>
-              )}
+          <div className="bg-white border border-blue-300 rounded-md p-4">
+            <h4 className="font-medium text-blue-900 mb-2 flex items-center gap-2">
+              <span>📋</span> Come funziona
+            </h4>
+            <ol className="text-sm text-blue-800 space-y-2 list-decimal list-inside">
+              <li>Collega fisicamente i sensori (DHT22, DHT11, ecc.) ai pin GPIO dell'ESP</li>
+              <li>Accedi alla pagina di configurazione del dispositivo (link sopra → "Configura Sensori")</li>
+              <li>Imposta il pin GPIO, il tipo di sensore e un nome personalizzato</li>
+              <li>Salva la configurazione</li>
+              <li>I sensori inizieranno automaticamente a inviare dati ogni 30 secondi</li>
+              <li>I sensori appariranno automaticamente qui sotto</li>
+            </ol>
+          </div>
 
-              <button
-                onClick={handleSetupSensors}
-                disabled={loading}
-                className={cn(
-                  'flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md',
-                  'hover:bg-blue-700 transition-colors',
-                  loading && 'opacity-50 cursor-not-allowed'
-                )}
+          {deviceHostname && (
+            <div className="mt-4">
+              <a
+                href={`${deviceHostname}/config`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
               >
-                <Settings className="h-5 w-5" />
-                <span>{loading ? 'Rilevamento...' : 'Rileva Sensori'}</span>
-              </button>
-
-              {loading && (
-                <p className="mt-3 text-xs text-blue-700">
-                  ⏳ In attesa di risposta dal dispositivo (potrebbe richiedere fino a 30 secondi)...
-                </p>
-              )}
-            </>
-          ) : (
-            <div className="flex items-center space-x-2 text-green-700">
-              <Check className="h-5 w-5" />
-              <span className="font-medium">
-                Richiesta inviata! Il dispositivo rileverà i sensori a breve.
-              </span>
+                <ExternalLink className="h-4 w-4" />
+                <span>Apri Configurazione ESP</span>
+              </a>
             </div>
           )}
         </div>

@@ -15,6 +15,9 @@ import { HistoryPage } from './pages/History.page';
 import { SensorsPage } from './pages/Sensors.page';
 import { ActuatorsPage } from './pages/Actuators.page';
 import { AutomationPage } from './pages/Automation.page';
+import { SettingsPage } from './pages/Settings.page';
+import { ProjectsPage } from './pages/Projects.page';
+import { ProjectDetailPage } from './pages/ProjectDetail.page';
 
 // Create React Query client
 const queryClient = new QueryClient({
@@ -44,6 +47,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <DashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects"
+              element={
+                <ProtectedRoute>
+                  <ProjectsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects/:projectId"
+              element={
+                <ProtectedRoute>
+                  <ProjectDetailPage />
                 </ProtectedRoute>
               }
             />
@@ -100,6 +119,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AutomationPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <ProtectedRoute>
+                  <SettingsPage />
                 </ProtectedRoute>
               }
             />

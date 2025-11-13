@@ -1,0 +1,3 @@
+# Edge Function Configuration for device-heartbeat
+# Disable JWT verification because we use custom device authentication (x-device-key header)
+verify_jwt = false

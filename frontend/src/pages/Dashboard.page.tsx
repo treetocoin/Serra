@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../lib/hooks/useAuth';
 import { devicesService } from '../services/devices.service';
 import { sensorsService } from '../services/sensors.service';
-import { LogOut, Home, Cpu, Thermometer, Zap, BarChart3, Settings } from 'lucide-react';
+import { LogOut, Home, Cpu, Thermometer, Zap, BarChart3, Settings, Settings2, Folder } from 'lucide-react';
 
 export function DashboardPage() {
   const { user, signOut } = useAuth();
@@ -60,6 +60,13 @@ export function DashboardPage() {
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-600">{user?.email}</span>
+              <Link
+                to="/settings"
+                className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+              >
+                <Settings2 className="h-4 w-4" />
+                <span>Impostazioni</span>
+              </Link>
               <button
                 onClick={handleSignOut}
                 className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
@@ -80,6 +87,18 @@ export function DashboardPage() {
             Il tuo sistema di gestione serra è pronto. Funzionalità di gestione dispositivi, monitoraggio sensori e controllo attuatori sono disponibili.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+            <Link
+              to="/projects"
+              className="bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-blue-500 hover:shadow-md transition-all cursor-pointer"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-medium text-gray-900">Progetti</h3>
+                <Folder className="h-5 w-5 text-blue-600" />
+              </div>
+              <p className="text-sm text-gray-600">Gestisci i tuoi progetti</p>
+              <p className="text-2xl font-bold text-blue-600 mt-2">📁</p>
+              <p className="text-xs text-blue-600 mt-2">Clicca per gestire →</p>
+            </Link>
             <Link
               to="/devices"
               className="bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-green-500 hover:shadow-md transition-all cursor-pointer"

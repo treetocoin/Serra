@@ -55,6 +55,7 @@ export type Database = {
           api_key_hash: string;
           firmware_version: string | null;
           configuration_requested: boolean;
+          device_hostname: string | null;
         };
         Insert: {
           id?: string;
@@ -66,6 +67,7 @@ export type Database = {
           api_key_hash: string;
           firmware_version?: string | null;
           configuration_requested?: boolean;
+          device_hostname?: string | null;
         };
         Update: {
           id?: string;
@@ -77,6 +79,7 @@ export type Database = {
           registered_at?: string;
           firmware_version?: string | null;
           configuration_requested?: boolean;
+          device_hostname?: string | null;
         };
       };
       sensors: {
