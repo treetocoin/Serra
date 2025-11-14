@@ -10,9 +10,22 @@ interface Props {
   onCancelEdit?: () => void;
 }
 
+// Available GPIO pins for Wemos D1 Mini
+const AVAILABLE_PINS = [
+  { value: 'D1', label: 'D1 (GPIO5) - Recommended for DHT22' },
+  { value: 'D2', label: 'D2 (GPIO4) - Recommended for DHT22' },
+  { value: 'D3', label: 'D3 (GPIO0)' },
+  { value: 'D4', label: 'D4 (GPIO2) - Built-in LED' },
+  { value: 'D5', label: 'D5 (GPIO14)' },
+  { value: 'D6', label: 'D6 (GPIO12)' },
+  { value: 'D7', label: 'D7 (GPIO13)' },
+  { value: 'D8', label: 'D8 (GPIO15)' },
+  { value: 'A0', label: 'A0 - Analog (for soil/water sensors)' },
+];
+
 export function SensorConfigForm({ deviceId, editingConfig, onSuccess, onCancelEdit }: Props) {
   const [sensorType, setSensorType] = useState<SensorType>('dht_sopra_temp');
-  const [portId, setPortId] = useState('');
+  const [portId, setPortId] = useState('D2'); // Default to D2
   const [error, setError] = useState('');
 
   const createConfig = useCreateSensorConfig();
@@ -25,7 +38,7 @@ export function SensorConfigForm({ deviceId, editingConfig, onSuccess, onCancelE
       setPortId(editingConfig.port_id);
     } else {
       setSensorType('dht_sopra_temp');
-      setPortId('');
+      setPortId('D2'); // Reset to default
     }
   }, [editingConfig]);
   const { data: soilMoistureCount } = useSoilMoistureSensorCount(deviceId);
@@ -71,7 +84,7 @@ export function SensorConfigForm({ deviceId, editingConfig, onSuccess, onCancelE
       }
 
       // Reset form
-      setPortId('');
+      setPortId('D2');
       setSensorType('dht_sopra_temp');
       onSuccess?.();
     } catch (err: any) {
@@ -121,19 +134,23 @@ export function SensorConfigForm({ deviceId, editingConfig, onSuccess, onCancelE
 
       <div>
         <label htmlFor="port-id" className="block text-sm font-medium text-gray-700 mb-1">
-          Port ID
+          Pin GPIO
         </label>
-        <input
+        <select
           id="port-id"
-          type="text"
           value={portId}
           onChange={(e) => setPortId(e.target.value)}
-          placeholder="e.g., GPIO4, A0, D1"
           className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
           required
-        />
+        >
+          {AVAILABLE_PINS.map(({ value, label }) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
         <p className="mt-1 text-xs text-gray-500">
-          Alphanumeric with dash or underscore only (e.g., GPIO4, A0, D1)
+          DHT22 sensors: use D1 or D2 • Analog sensors (soil/water): use A0
         </p>
       </div>
 
