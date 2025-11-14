@@ -47,7 +47,7 @@ export function useDeactivateSensorConfig() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ configId, deviceId }: { configId: string; deviceId: string }) =>
+    mutationFn: ({ configId }: { configId: string; deviceId: string }) =>
       sensorConfigService.deactivateConfig(configId),
     onSuccess: (_, variables) => {
       // Invalidate device configs to refetch
