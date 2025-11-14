@@ -1,0 +1,575 @@
+openapi: 3.0.3
+info:
+  title: Sensor Configuration API
+  description: |
+    API endpoints for managing standard sensor configurations on greenhouse devices.
+    Feature: 004-deve-funzionare-così (Standard Sensor Configuration and Dynamic Charting)
+  version: 1.0.0
+  contact:
+    name: Serra Greenhouse Management
+
+servers:
+  - url: https://fmyomzywzjtxmabvvjcd.supabase.co/rest/v1
+    description: Supabase REST API (production)
+  - url: http://localhost:54321/rest/v1
+    description: Supabase local development
+
+tags:
+  - name: Sensor Configuration
+    description: Manage sensor type to port mappings for devices
+  - name: Sensor Readings
+    description: Query sensor readings with type-based filtering
+
+paths:
+  /device_sensor_configs:
+    get:
+      tags:
+        - Sensor Configuration
+      summary: List sensor configurations
+      description: |
+        Retrieves sensor configurations for devices owned by the authenticated user.
+        Typically filtered by device_id to show configs for a specific device.
+      operationId: listSensorConfigs
+      parameters:
+        - name: device_id
+          in: query
+          description: Filter configs by device ID
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: is_active
+          in: query
+          description: Filter by active status (true = current configs only)
+          required: false
+          schema:
+            type: boolean
+            default: true
+        - name: select
+          in: query
+          description: Fields to return (Supabase query format)
+          required: false
+          schema:
+            type: string
+            default: "*"
+      responses:
+        '200':
+          description: List of sensor configurations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SensorConfig'
+              examples:
+                activeConfigs:
+                  summary: Active configs for a device
+                  value:
+                    - id: "550e8400-e29b-41d4-a716-446655440000"
+                      device_id: "660e8400-e29b-41d4-a716-446655440000"
+                      sensor_type: "dht_sopra_temp"
+                      port_id: "GPIO4"
+                      configured_at: "2025-11-13T10:30:00Z"
+                      is_active: true
+                    - id: "550e8400-e29b-41d4-a716-446655440001"
+                      device_id: "660e8400-e29b-41d4-a716-446655440000"
+                      sensor_type: "soil_moisture_1"
+                      port_id: "A0"
+                      configured_at: "2025-11-13T10:35:00Z"
+                      is_active: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - bearerAuth: []
+
+    post:
+      tags:
+        - Sensor Configuration
+      summary: Create sensor configuration
+      description: |
+        Creates a new sensor configuration for a device.
+        Validates that port is not already configured (FR-008).
+        User must own the device.
+      operationId: createSensorConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorConfigCreate'
+            examples:
+              dhtSensor:
+                summary: Configure DHT Sopra sensor
+                value:
+                  device_id: "660e8400-e29b-41d4-a716-446655440000"
+                  sensor_type: "dht_sopra_temp"
+                  port_id: "GPIO4"
+              soilSensor:
+                summary: Configure Soil Moisture sensor
+                value:
+                  device_id: "660e8400-e29b-41d4-a716-446655440000"
+                  sensor_type: "soil_moisture_1"
+                  port_id: "A0"
+      responses:
+        '201':
+          description: Configuration created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SensorConfig'
+        '400':
+          description: Validation error (duplicate port, invalid sensor type, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                duplicatePort:
+                  summary: Port already configured
+                  value:
+                    error: "Port GPIO4 already configured for this device"
+                    code: "duplicate_port"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: User does not own the device
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+        - bearerAuth: []
+
+  /device_sensor_configs/{id}:
+    patch:
+      tags:
+        - Sensor Configuration
+      summary: Update sensor configuration
+      description: |
+        Updates an existing sensor configuration.
+        Typically used to deactivate a config (is_active = false) when user changes settings.
+        To change sensor type or port, recommended pattern is:
+        1. PATCH old config with is_active=false
+        2. POST new config
+      operationId: updateSensorConfig
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Configuration ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorConfigUpdate'
+            examples:
+              deactivate:
+                summary: Deactivate a configuration
+                value:
+                  is_active: false
+      responses:
+        '200':
+          description: Configuration updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SensorConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Configuration not found
+      security:
+        - bearerAuth: []
+
+    delete:
+      tags:
+        - Sensor Configuration
+      summary: Delete sensor configuration
+      description: |
+        Deletes a sensor configuration (hard delete).
+        Soft delete (PATCH is_active=false) is recommended to preserve history.
+      operationId: deleteSensorConfig
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Configuration ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Configuration deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Configuration not found
+      security:
+        - bearerAuth: []
+
+  /sensor_readings:
+    get:
+      tags:
+        - Sensor Readings
+      summary: Query sensor readings
+      description: |
+        Retrieves sensor readings with optional filters.
+        For chart rendering, filter by device_id, sensor_type, and timestamp range.
+      operationId: listSensorReadings
+      parameters:
+        - name: device_id
+          in: query
+          description: Filter by device ID
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: sensor_type
+          in: query
+          description: Filter by sensor type (e.g., "dht_sopra_temp")
+          required: false
+          schema:
+            type: string
+            enum:
+              - dht_sopra_temp
+              - dht_sopra_humidity
+              - dht_sotto_temp
+              - dht_sotto_humidity
+              - soil_moisture_1
+              - soil_moisture_2
+              - soil_moisture_3
+              - soil_moisture_4
+              - soil_moisture_5
+              - water_level
+              - unconfigured
+        - name: timestamp
+          in: query
+          description: Filter by timestamp (Supabase range syntax, e.g., "gte.2025-11-12T00:00:00Z")
+          required: false
+          schema:
+            type: string
+        - name: order
+          in: query
+          description: Order results (e.g., "timestamp.asc")
+          required: false
+          schema:
+            type: string
+            default: "timestamp.asc"
+        - name: limit
+          in: query
+          description: Limit number of results
+          required: false
+          schema:
+            type: integer
+            default: 1000
+            maximum: 10000
+      responses:
+        '200':
+          description: List of sensor readings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SensorReading'
+              examples:
+                temperatureReadings:
+                  summary: Temperature readings for chart
+                  value:
+                    - id: "770e8400-e29b-41d4-a716-446655440000"
+                      device_id: "660e8400-e29b-41d4-a716-446655440000"
+                      sensor_type: "dht_sopra_temp"
+                      port_id: "GPIO4"
+                      value: 25.5
+                      unit: "°C"
+                      timestamp: "2025-11-13T10:00:00Z"
+                    - id: "770e8400-e29b-41d4-a716-446655440001"
+                      device_id: "660e8400-e29b-41d4-a716-446655440000"
+                      sensor_type: "dht_sotto_temp"
+                      port_id: "GPIO5"
+                      value: 22.1
+                      unit: "°C"
+                      timestamp: "2025-11-13T10:00:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - bearerAuth: []
+
+    post:
+      tags:
+        - Sensor Readings
+      summary: Insert sensor reading
+      description: |
+        Inserts a new sensor reading.
+        Typically called by device API or Edge Function.
+        sensor_type and port_id should be resolved before insertion (see resolve_sensor_type function).
+      operationId: createSensorReading
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorReadingCreate'
+      responses:
+        '201':
+          description: Reading created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SensorReading'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - serviceRole: []  # Typically service role for device writes
+
+  /rpc/resolve_sensor_type:
+    post:
+      tags:
+        - Sensor Configuration
+      summary: Resolve sensor type for a device port
+      description: |
+        Helper RPC function to resolve sensor_type from active configuration.
+        Used by API/Edge Function before inserting sensor readings.
+        Returns 'unconfigured' if no active config exists.
+      operationId: resolveSensorType
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - p_device_id
+                - p_port_id
+              properties:
+                p_device_id:
+                  type: string
+                  format: uuid
+                  description: Device ID
+                p_port_id:
+                  type: string
+                  description: Port identifier
+              example:
+                p_device_id: "660e8400-e29b-41d4-a716-446655440000"
+                p_port_id: "GPIO4"
+      responses:
+        '200':
+          description: Sensor type resolved
+          content:
+            application/json:
+              schema:
+                type: string
+                example: "dht_sopra_temp"
+              examples:
+                configured:
+                  summary: Port is configured
+                  value: "dht_sopra_temp"
+                unconfigured:
+                  summary: Port not configured
+                  value: "unconfigured"
+      security:
+        - serviceRole: []
+
+components:
+  schemas:
+    SensorConfig:
+      type: object
+      required:
+        - id
+        - device_id
+        - sensor_type
+        - port_id
+        - configured_at
+        - is_active
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique configuration ID
+        device_id:
+          type: string
+          format: uuid
+          description: Device this configuration belongs to
+        sensor_type:
+          type: string
+          enum:
+            - dht_sopra_temp
+            - dht_sopra_humidity
+            - dht_sotto_temp
+            - dht_sotto_humidity
+            - soil_moisture_1
+            - soil_moisture_2
+            - soil_moisture_3
+            - soil_moisture_4
+            - soil_moisture_5
+            - water_level
+            - unconfigured
+          description: Standard sensor type identifier
+        port_id:
+          type: string
+          pattern: '^[A-Za-z0-9_-]+$'
+          maxLength: 50
+          description: Physical port identifier (e.g., GPIO4, A0)
+          example: "GPIO4"
+        configured_at:
+          type: string
+          format: date-time
+          description: When this configuration was created
+        is_active:
+          type: boolean
+          description: Whether this configuration is currently active
+          default: true
+
+    SensorConfigCreate:
+      type: object
+      required:
+        - device_id
+        - sensor_type
+        - port_id
+      properties:
+        device_id:
+          type: string
+          format: uuid
+        sensor_type:
+          type: string
+          enum:
+            - dht_sopra_temp
+            - dht_sopra_humidity
+            - dht_sotto_temp
+            - dht_sotto_humidity
+            - soil_moisture_1
+            - soil_moisture_2
+            - soil_moisture_3
+            - soil_moisture_4
+            - soil_moisture_5
+            - water_level
+        port_id:
+          type: string
+          pattern: '^[A-Za-z0-9_-]+$'
+          maxLength: 50
+          example: "GPIO4"
+
+    SensorConfigUpdate:
+      type: object
+      properties:
+        is_active:
+          type: boolean
+          description: Set to false to deactivate configuration
+        # Note: Changing sensor_type or port_id should be done via deactivate + create
+
+    SensorReading:
+      type: object
+      required:
+        - id
+        - device_id
+        - value
+        - timestamp
+      properties:
+        id:
+          type: string
+          format: uuid
+        device_id:
+          type: string
+          format: uuid
+        sensor_id:
+          type: string
+          description: Legacy identifier (backward compatibility)
+        sensor_type:
+          type: string
+          enum:
+            - dht_sopra_temp
+            - dht_sopra_humidity
+            - dht_sotto_temp
+            - dht_sotto_humidity
+            - soil_moisture_1
+            - soil_moisture_2
+            - soil_moisture_3
+            - soil_moisture_4
+            - soil_moisture_5
+            - water_level
+            - unconfigured
+          description: Sensor type at time of reading (snapshot)
+        port_id:
+          type: string
+          description: Port identifier at time of reading
+        value:
+          type: number
+          format: double
+          description: Sensor reading value
+        unit:
+          type: string
+          description: Unit of measurement
+          example: "°C"
+        timestamp:
+          type: string
+          format: date-time
+
+    SensorReadingCreate:
+      type: object
+      required:
+        - device_id
+        - value
+        - timestamp
+      properties:
+        device_id:
+          type: string
+          format: uuid
+        sensor_id:
+          type: string
+          description: Legacy identifier (optional)
+        sensor_type:
+          type: string
+          description: Resolved sensor type
+        port_id:
+          type: string
+          description: Port identifier
+        value:
+          type: number
+          format: double
+        unit:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+        code:
+          type: string
+          description: Machine-readable error code
+        details:
+          type: object
+          description: Additional error context
+
+  responses:
+    Unauthorized:
+      description: Authentication required or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Unauthorized"
+            code: "auth_required"
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase user JWT token
+    serviceRole:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase service role key (for backend/Edge Function use)

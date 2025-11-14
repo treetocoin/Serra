@@ -8,7 +8,8 @@ import { ActuatorList } from '../components/actuators/ActuatorList';
 import { DeviceSetup } from '../components/devices/DeviceSetup';
 import { SensorConfigForm } from '../components/devices/SensorConfigForm';
 import { useSensorConfigs, useDeactivateSensorConfig } from '../hooks/useSensorConfig';
-import { SENSOR_TYPE_LABELS } from '../types/sensor-config.types';
+import { SENSOR_TYPE_LABELS, getDHTBase, UI_SENSOR_TYPE_LABELS } from '../types/sensor-config.types';
+import type { SensorConfig } from '../types/sensor-config.types';
 import {
   TemperatureChart,
   HumidityChart,
@@ -255,41 +256,110 @@ export function DeviceDetailPage() {
             {sensorConfigs && sensorConfigs.length > 0 ? (
               <div className="space-y-2 mb-6">
                 <h3 className="text-sm font-medium text-gray-700">Configurazioni Attive</h3>
-                {sensorConfigs.map((config) => (
-                  <div
-                    key={config.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {SENSOR_TYPE_LABELS[config.sensor_type]}
-                        </p>
-                        <p className="text-sm text-gray-500">Porta: {config.port_id}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => setEditingConfig(config)}
-                        disabled={deactivateConfig.isPending}
-                        className="flex items-center space-x-1 px-3 py-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors disabled:opacity-50"
-                        title="Modifica configurazione"
-                      >
-                        <Edit className="h-4 w-4" />
-                        <span className="text-sm">Modifica</span>
-                      </button>
-                      <button
-                        onClick={() => handleRemoveConfig(config.id)}
-                        disabled={deactivateConfig.isPending}
-                        className="flex items-center space-x-1 px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
-                        title="Rimuovi configurazione"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        <span className="text-sm">Rimuovi</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                {(() => {
+                  // Group DHT sensors (temp + humidity pairs)
+                  const grouped: { [key: string]: SensorConfig[] } = {};
+                  const nonDHT: SensorConfig[] = [];
+
+                  sensorConfigs.forEach((config) => {
+                    const dhtBase = getDHTBase(config.sensor_type);
+                    if (dhtBase) {
+                      if (!grouped[dhtBase]) grouped[dhtBase] = [];
+                      grouped[dhtBase].push(config);
+                    } else {
+                      nonDHT.push(config);
+                    }
+                  });
+
+                  // Render grouped DHT sensors + non-DHT sensors
+                  return (
+                    <>
+                      {/* DHT Sensors (grouped) */}
+                      {Object.entries(grouped).map(([dhtType, configs]) => {
+                        const mainConfig = configs.find(c => c.sensor_type.endsWith('_temp')) || configs[0];
+                        return (
+                          <div
+                            key={dhtType}
+                            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+                          >
+                            <div className="flex items-center space-x-3">
+                              <div>
+                                <p className="font-medium text-gray-900">
+                                  {UI_SENSOR_TYPE_LABELS[dhtType as keyof typeof UI_SENSOR_TYPE_LABELS]}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  Porta: {mainConfig.port_id.replace(/-humidity$/, '')} • Temp + Humidity
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => setEditingConfig(mainConfig)}
+                                disabled={deactivateConfig.isPending}
+                                className="flex items-center space-x-1 px-3 py-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors disabled:opacity-50"
+                                title="Modifica configurazione"
+                              >
+                                <Edit className="h-4 w-4" />
+                                <span className="text-sm">Modifica</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  // Remove both temp and humidity configs
+                                  if (confirm('Rimuovere questo sensore DHT (temperatura e umidità)?')) {
+                                    configs.forEach(c => handleRemoveConfig(c.id));
+                                  }
+                                }}
+                                disabled={deactivateConfig.isPending}
+                                className="flex items-center space-x-1 px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
+                                title="Rimuovi configurazione"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                <span className="text-sm">Rimuovi</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Non-DHT Sensors */}
+                      {nonDHT.map((config) => (
+                        <div
+                          key={config.id}
+                          className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {SENSOR_TYPE_LABELS[config.sensor_type]}
+                              </p>
+                              <p className="text-sm text-gray-500">Porta: {config.port_id}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => setEditingConfig(config)}
+                              disabled={deactivateConfig.isPending}
+                              className="flex items-center space-x-1 px-3 py-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors disabled:opacity-50"
+                              title="Modifica configurazione"
+                            >
+                              <Edit className="h-4 w-4" />
+                              <span className="text-sm">Modifica</span>
+                            </button>
+                            <button
+                              onClick={() => handleRemoveConfig(config.id)}
+                              disabled={deactivateConfig.isPending}
+                              className="flex items-center space-x-1 px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
+                              title="Rimuovi configurazione"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span className="text-sm">Rimuovi</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  );
+                })()}
               </div>
             ) : (
               <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200 text-center">

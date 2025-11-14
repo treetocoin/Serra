@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useCreateSensorConfig, useUpdateSensorConfig, useSoilMoistureSensorCount } from '@/hooks/useSensorConfig';
-import { SENSOR_TYPE_LABELS, isValidPortId } from '@/types/sensor-config.types';
-import type { SensorType, SensorConfig } from '@/types/sensor-config.types';
+import { UI_SENSOR_TYPE_LABELS, isValidPortId, getDHTBase } from '@/types/sensor-config.types';
+import type { UISensorType, SensorConfig } from '@/types/sensor-config.types';
 
 interface Props {
   deviceId: string;
@@ -39,7 +39,7 @@ function normalizePortId(dbPortId: string): string {
 }
 
 export function SensorConfigForm({ deviceId, editingConfig, onSuccess, onCancelEdit }: Props) {
-  const [sensorType, setSensorType] = useState<SensorType>('dht_sopra_temp');
+  const [sensorType, setSensorType] = useState<UISensorType>('dht_sopra');
   const [portId, setPortId] = useState('D2'); // Default to D2
   const [error, setError] = useState('');
 
@@ -49,11 +49,17 @@ export function SensorConfigForm({ deviceId, editingConfig, onSuccess, onCancelE
   // Set form values when editing
   useEffect(() => {
     if (editingConfig) {
-      setSensorType(editingConfig.sensor_type);
+      // Convert database type to UI type
+      const baseType = getDHTBase(editingConfig.sensor_type);
+      if (baseType) {
+        setSensorType(baseType);
+      } else {
+        setSensorType(editingConfig.sensor_type as UISensorType);
+      }
       // Normalize port_id from database format (e.g., GPIO4 -> D2)
       setPortId(normalizePortId(editingConfig.port_id));
     } else {
-      setSensorType('dht_sopra_temp');
+      setSensorType('dht_sopra');
       setPortId('D2'); // Reset to default
     }
   }, [editingConfig]);
@@ -88,38 +94,68 @@ export function SensorConfigForm({ deviceId, editingConfig, onSuccess, onCancelE
     }
 
     try {
-      if (editingConfig) {
-        // Update existing configuration
-        await updateConfig.mutateAsync({
-          oldConfigId: editingConfig.id,
-          newConfig: {
+      // If DHT sensor, create BOTH temp and humidity configs
+      if (sensorType === 'dht_sopra' || sensorType === 'dht_sotto') {
+        const baseName = sensorType === 'dht_sopra' ? 'dht_sopra' : 'dht_sotto';
+
+        if (editingConfig) {
+          // When editing DHT, update both temp and humidity configs
+          // TODO: Also update the paired config if it exists
+
+          // Update the current one
+          await updateConfig.mutateAsync({
+            oldConfigId: editingConfig.id,
+            newConfig: {
+              device_id: deviceId,
+              sensor_type: editingConfig.sensor_type, // Keep same type (temp or humidity)
+              port_id: finalPortId,
+            },
+          });
+        } else {
+          // Create both temp and humidity configs
+          await createConfig.mutateAsync({
             device_id: deviceId,
-            sensor_type: sensorType,
+            sensor_type: `${baseName}_temp` as any,
             port_id: finalPortId,
-          },
-        });
+          });
+
+          await createConfig.mutateAsync({
+            device_id: deviceId,
+            sensor_type: `${baseName}_humidity` as any,
+            port_id: `${finalPortId}-humidity`,
+          });
+        }
       } else {
-        // Create new configuration
-        await createConfig.mutateAsync({
-          device_id: deviceId,
-          sensor_type: sensorType,
-          port_id: finalPortId,
-        });
+        // Non-DHT sensors: single config
+        if (editingConfig) {
+          await updateConfig.mutateAsync({
+            oldConfigId: editingConfig.id,
+            newConfig: {
+              device_id: deviceId,
+              sensor_type: sensorType as any,
+              port_id: finalPortId,
+            },
+          });
+        } else {
+          await createConfig.mutateAsync({
+            device_id: deviceId,
+            sensor_type: sensorType as any,
+            port_id: finalPortId,
+          });
+        }
       }
 
       // Reset form
       setPortId('D2');
-      setSensorType('dht_sopra_temp');
+      setSensorType('dht_sopra');
       onSuccess?.();
     } catch (err: any) {
       setError(err.message || `Failed to ${editingConfig ? 'update' : 'create'} configuration`);
     }
   };
 
-  // Filter out unconfigured from dropdown
-  const availableSensorTypes = Object.entries(SENSOR_TYPE_LABELS).filter(
-    ([key]) => key !== 'unconfigured'
-  );
+  // Use UI sensor types (simplified)
+  const availableSensorTypes = Object.entries(UI_SENSOR_TYPE_LABELS);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 bg-white p-4 rounded-lg border border-gray-200">
@@ -145,7 +181,7 @@ export function SensorConfigForm({ deviceId, editingConfig, onSuccess, onCancelE
         <select
           id="sensor-type"
           value={sensorType}
-          onChange={(e) => setSensorType(e.target.value as SensorType)}
+          onChange={(e) => setSensorType(e.target.value as UISensorType)}
           className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
         >
           {availableSensorTypes.map(([value, label]) => (
