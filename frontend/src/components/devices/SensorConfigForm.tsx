@@ -12,16 +12,31 @@ interface Props {
 
 // Available GPIO pins for Wemos D1 Mini
 const AVAILABLE_PINS = [
-  { value: 'D1', label: 'D1 (GPIO5) - Recommended for DHT22' },
-  { value: 'D2', label: 'D2 (GPIO4) - Recommended for DHT22' },
-  { value: 'D3', label: 'D3 (GPIO0)' },
-  { value: 'D4', label: 'D4 (GPIO2) - Built-in LED' },
-  { value: 'D5', label: 'D5 (GPIO14)' },
-  { value: 'D6', label: 'D6 (GPIO12)' },
-  { value: 'D7', label: 'D7 (GPIO13)' },
-  { value: 'D8', label: 'D8 (GPIO15)' },
-  { value: 'A0', label: 'A0 - Analog (for soil/water sensors)' },
+  { value: 'D1', label: 'D1 (GPIO5) - Recommended for DHT22', gpio: 5 },
+  { value: 'D2', label: 'D2 (GPIO4) - Recommended for DHT22', gpio: 4 },
+  { value: 'D3', label: 'D3 (GPIO0)', gpio: 0 },
+  { value: 'D4', label: 'D4 (GPIO2) - Built-in LED', gpio: 2 },
+  { value: 'D5', label: 'D5 (GPIO14)', gpio: 14 },
+  { value: 'D6', label: 'D6 (GPIO12)', gpio: 12 },
+  { value: 'D7', label: 'D7 (GPIO13)', gpio: 13 },
+  { value: 'D8', label: 'D8 (GPIO15)', gpio: 15 },
+  { value: 'A0', label: 'A0 - Analog (for soil/water sensors)', gpio: null },
 ];
+
+// Normalize port ID from database format to select format
+function normalizePortId(dbPortId: string): string {
+  // Remove -humidity suffix if present
+  const basePort = dbPortId.replace(/-humidity$/, '');
+
+  // Convert GPIO4 -> D2, GPIO5 -> D1, etc.
+  if (basePort.startsWith('GPIO')) {
+    const gpioNum = parseInt(basePort.replace('GPIO', ''));
+    const pin = AVAILABLE_PINS.find(p => p.gpio === gpioNum);
+    return pin?.value || basePort;
+  }
+
+  return basePort;
+}
 
 export function SensorConfigForm({ deviceId, editingConfig, onSuccess, onCancelEdit }: Props) {
   const [sensorType, setSensorType] = useState<SensorType>('dht_sopra_temp');
@@ -35,7 +50,8 @@ export function SensorConfigForm({ deviceId, editingConfig, onSuccess, onCancelE
   useEffect(() => {
     if (editingConfig) {
       setSensorType(editingConfig.sensor_type);
-      setPortId(editingConfig.port_id);
+      // Normalize port_id from database format (e.g., GPIO4 -> D2)
+      setPortId(normalizePortId(editingConfig.port_id));
     } else {
       setSensorType('dht_sopra_temp');
       setPortId('D2'); // Reset to default
@@ -47,8 +63,16 @@ export function SensorConfigForm({ deviceId, editingConfig, onSuccess, onCancelE
     e.preventDefault();
     setError('');
 
+    // Convert D-pin format to GPIO format for consistency with firmware
+    // D1 -> GPIO5, D2 -> GPIO4, etc.
+    let finalPortId = portId;
+    const selectedPin = AVAILABLE_PINS.find(p => p.value === portId);
+    if (selectedPin && selectedPin.gpio !== null) {
+      finalPortId = `GPIO${selectedPin.gpio}`;
+    }
+
     // Validate port ID
-    if (!isValidPortId(portId)) {
+    if (!isValidPortId(finalPortId)) {
       setError('Port ID must be alphanumeric with - or _ only (max 50 chars)');
       return;
     }
@@ -71,7 +95,7 @@ export function SensorConfigForm({ deviceId, editingConfig, onSuccess, onCancelE
           newConfig: {
             device_id: deviceId,
             sensor_type: sensorType,
-            port_id: portId,
+            port_id: finalPortId,
           },
         });
       } else {
@@ -79,7 +103,7 @@ export function SensorConfigForm({ deviceId, editingConfig, onSuccess, onCancelE
         await createConfig.mutateAsync({
           device_id: deviceId,
           sensor_type: sensorType,
-          port_id: portId,
+          port_id: finalPortId,
         });
       }
 
