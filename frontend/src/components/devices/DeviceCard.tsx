@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Wifi, WifiOff, AlertCircle, Trash2, Cpu } from 'lucide-react';
+import { Wifi, WifiOff, AlertCircle, Trash2, Cpu, Copy, Check } from 'lucide-react';
 import type { Database } from '../../lib/supabase';
 import { devicesService } from '../../services/devices.service';
 import { cn } from '../../utils/cn';
@@ -16,6 +16,7 @@ export function DeviceCard({ device, onDelete }: DeviceCardProps) {
   const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const status = devicesService.getConnectionStatus(device.last_seen_at);
 
@@ -58,6 +59,18 @@ export function DeviceCard({ device, onDelete }: DeviceCardProps) {
     } else {
       setDeleting(false);
       alert(`Errore nell'eliminazione del dispositivo: ${error.message}`);
+    }
+  };
+
+  const handleCopyId = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!device.composite_device_id) return;
+    try {
+      await navigator.clipboard.writeText(device.composite_device_id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
     }
   };
 
@@ -107,6 +120,33 @@ export function DeviceCard({ device, onDelete }: DeviceCardProps) {
           <div className="mt-1 text-xs text-gray-400">
             Registrato: {new Date(device.registered_at).toLocaleDateString('it-IT')}
           </div>
+
+          {/* Device ID with copy button */}
+          {device.composite_device_id && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <label className="text-xs font-medium text-gray-500 block mb-1">
+                    ID Dispositivo
+                  </label>
+                  <code className="text-sm font-mono font-semibold text-blue-700 block">
+                    {device.composite_device_id}
+                  </code>
+                </div>
+                <button
+                  onClick={handleCopyId}
+                  className="ml-2 p-2 text-green-600 hover:bg-green-50 rounded-md transition-colors shrink-0"
+                  title="Copia ID dispositivo"
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="ml-4" onClick={(e) => e.stopPropagation()}>

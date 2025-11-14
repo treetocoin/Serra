@@ -41,7 +41,31 @@ export const devicesService = {
   },
 
   /**
-   * Register a new device and generate API key
+   * Register a new device using simplified flow (auto-uses default project)
+   * ESP auto-generates device key
+   */
+  async registerDeviceSimple(
+    name: string,
+    deviceNumber: number
+  ): Promise<{
+    composite_device_id: string;
+    id: string;
+    registered_at: string;
+  }> {
+    const { data, error } = await supabase.rpc('register_device_simple', {
+      p_name: name,
+      p_device_number: deviceNumber,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data[0];
+  },
+
+  /**
+   * Register a new device and generate API key (LEGACY - kept for backwards compatibility)
    */
   async registerDevice({ name, userId }: RegisterDeviceData): Promise<{
     device: DeviceWithApiKey | null;

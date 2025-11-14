@@ -10,11 +10,10 @@ interface DeviceRegisterProps {
 
 export function DeviceRegister({ onDeviceRegistered }: DeviceRegisterProps) {
   const [name, setName] = useState('');
+  const [deviceNumber, setDeviceNumber] = useState<number>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState<string | null>(null);
-  const [deviceId, setDeviceId] = useState<string | null>(null);
-  const [copiedApiKey, setCopiedApiKey] = useState(false);
+  const [compositeDeviceId, setCompositeDeviceId] = useState<string | null>(null);
   const [copiedDeviceId, setCopiedDeviceId] = useState(false);
   const { user } = useAuth();
 
@@ -25,43 +24,29 @@ export function DeviceRegister({ onDeviceRegistered }: DeviceRegisterProps) {
     setError(null);
     setLoading(true);
 
-    const { device, error } = await devicesService.registerDevice({
-      name,
-      userId: user.id,
-    });
-
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-    } else if (device?.apiKey) {
-      setApiKey(device.apiKey);
-      setDeviceId(device.id);
+    try {
+      const result = await devicesService.registerDeviceSimple(name, deviceNumber);
+      setCompositeDeviceId(result.composite_device_id);
       setName('');
+      setDeviceNumber(1);
       setLoading(false);
       onDeviceRegistered();
-    }
-  };
-
-  const handleCopyApiKey = () => {
-    if (apiKey) {
-      navigator.clipboard.writeText(apiKey);
-      setCopiedApiKey(true);
-      setTimeout(() => setCopiedApiKey(false), 2000);
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
     }
   };
 
   const handleCopyDeviceId = () => {
-    if (deviceId) {
-      navigator.clipboard.writeText(deviceId);
+    if (compositeDeviceId) {
+      navigator.clipboard.writeText(compositeDeviceId);
       setCopiedDeviceId(true);
       setTimeout(() => setCopiedDeviceId(false), 2000);
     }
   };
 
   const handleClose = () => {
-    setApiKey(null);
-    setDeviceId(null);
-    setCopiedApiKey(false);
+    setCompositeDeviceId(null);
     setCopiedDeviceId(false);
   };
 
@@ -69,7 +54,7 @@ export function DeviceRegister({ onDeviceRegistered }: DeviceRegisterProps) {
     <div className="bg-white shadow rounded-lg p-6">
       <h2 className="text-xl font-semibold text-gray-900 mb-4">Registra Nuovo Dispositivo</h2>
 
-      {!apiKey ? (
+      {!compositeDeviceId ? (
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
@@ -77,22 +62,43 @@ export function DeviceRegister({ onDeviceRegistered }: DeviceRegisterProps) {
             </div>
           )}
 
-          <div>
-            <label htmlFor="device-name" className="block text-sm font-medium text-gray-700 mb-1">
-              Nome Dispositivo
-            </label>
-            <input
-              id="device-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="es., Serra ESP32"
-              required
-              className={cn(
-                'w-full px-3 py-2 border border-gray-300 rounded-md',
-                'focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent'
-              )}
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="device-name" className="block text-sm font-medium text-gray-700 mb-1">
+                Nome Dispositivo
+              </label>
+              <input
+                id="device-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="es., Serra Principale"
+                required
+                className={cn(
+                  'w-full px-3 py-2 border border-gray-300 rounded-md',
+                  'focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent'
+                )}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="device-number" className="block text-sm font-medium text-gray-700 mb-1">
+                Numero Dispositivo (1-20)
+              </label>
+              <input
+                id="device-number"
+                type="number"
+                min="1"
+                max="20"
+                value={deviceNumber}
+                onChange={(e) => setDeviceNumber(parseInt(e.target.value))}
+                required
+                className={cn(
+                  'w-full px-3 py-2 border border-gray-300 rounded-md',
+                  'focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent'
+                )}
+              />
+            </div>
           </div>
 
           <button
@@ -113,7 +119,7 @@ export function DeviceRegister({ onDeviceRegistered }: DeviceRegisterProps) {
           <div className="bg-green-50 border border-green-200 p-4 rounded-md">
             <p className="text-green-800 font-medium mb-2">✅ Dispositivo Registrato con Successo!</p>
             <p className="text-sm text-green-700">
-              Salva queste credenziali in modo sicuro. Non potrai più vedere la chiave API.
+              Il dispositivo è ora pronto per essere configurato.
             </p>
           </div>
 
@@ -121,7 +127,7 @@ export function DeviceRegister({ onDeviceRegistered }: DeviceRegisterProps) {
             <label className="block text-sm font-medium text-gray-700 mb-2">ID Dispositivo</label>
             <div className="flex items-center space-x-2">
               <code className="flex-1 bg-white border border-gray-300 rounded px-3 py-2 text-sm font-mono break-all">
-                {deviceId}
+                {compositeDeviceId}
               </code>
               <button
                 onClick={handleCopyDeviceId}
@@ -137,30 +143,17 @@ export function DeviceRegister({ onDeviceRegistered }: DeviceRegisterProps) {
             </div>
           </div>
 
-          <div className="bg-gray-50 border border-gray-300 rounded-md p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Chiave API</label>
-            <div className="flex items-center space-x-2">
-              <code className="flex-1 bg-white border border-gray-300 rounded px-3 py-2 text-sm font-mono break-all">
-                {apiKey}
-              </code>
-              <button
-                onClick={handleCopyApiKey}
-                className={cn(
-                  'px-3 py-2 rounded-md transition-colors',
-                  copiedApiKey
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                )}
-              >
-                {copiedApiKey ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5" />}
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-            <p className="text-sm text-yellow-800">
-              <strong>Importante:</strong> Copia sia l'ID Dispositivo che la chiave API ora. Configurali nel firmware del tuo ESP8266/ESP32 per autenticare le richieste del dispositivo.
+          <div className="bg-blue-50 border border-blue-200 p-4 rounded-md">
+            <p className="text-sm text-blue-800">
+              <strong>Prossimi Passi:</strong>
             </p>
+            <ol className="text-sm text-blue-700 mt-2 ml-4 list-decimal space-y-1">
+              <li>Alimenta il tuo ESP8266/ESP32</li>
+              <li>Connettiti al WiFi "Serra-Setup"</li>
+              <li>Inserisci questo ID dispositivo: <strong>{compositeDeviceId}</strong></li>
+              <li>Configura la tua rete WiFi</li>
+              <li>Il dispositivo genererà automaticamente la sua chiave di sicurezza</li>
+            </ol>
           </div>
 
           <button

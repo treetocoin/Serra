@@ -1,8 +1,14 @@
 /**
  * ================================================================================
  * Greenhouse Management System - ESP8266 with WiFiManager + OTA
- * Firmware v1.2 - WiFiManager + OTA Enabled
+ * Firmware v1.3 - Composite Device ID Support
  * ================================================================================
+ *
+ * NOVITÀ v1.3:
+ * - Supporto per Composite Device ID (es. PROJ1-ESP3)
+ * - Auto-generazione Device Key per sicurezza
+ * - Nuovo sistema di autenticazione con Edge Function
+ * - Configurazione ID dispositivo tramite web
  *
  * NOVITÀ v1.2:
  * - WiFiManager: configura WiFi via browser senza Arduino IDE!
@@ -12,20 +18,35 @@
  * - Tutte le funzionalità OTA della v1.1
  *
  * ================================================================================
- * PRIMO AVVIO - CONFIGURAZIONE WiFi
+ * CONFIGURAZIONE INIZIALE
  * ================================================================================
  *
+ * STEP 1 - Registra Dispositivo sulla WebApp:
+ * 1. Vai su https://serra.netlify.app
+ * 2. Login e vai nella sezione "Dispositivi"
+ * 3. Click "Registra Nuovo Dispositivo"
+ * 4. Inserisci nome (es. "Serra Principale") e numero dispositivo (1-20)
+ * 5. COPIA L'ID DISPOSITIVO generato (es. "PROJ1-ESP3")
+ *
+ * STEP 2 - Carica Firmware:
  * 1. Carica questo firmware via USB (prima e unica volta)
- * 2. ESP8266 si avvia e NON trova credenziali WiFi salvate
- * 3. Crea automaticamente un Access Point: "Serra-Setup"
- * 4. Connettiti a "Serra-Setup" con smartphone/PC (no password)
- * 5. Si apre automaticamente il portale di configurazione
+ * 2. ESP8266 si avvia e crea Access Point: "Serra-Setup"
+ *
+ * STEP 3 - Configura WiFi e Device ID:
+ * 1. Connettiti a "Serra-Setup" con smartphone/PC (no password)
+ * 2. Si apre automaticamente il portale di configurazione
  *    (se non si apre, vai su http://192.168.4.1)
- * 6. Click "Configure WiFi"
- * 7. Seleziona la tua rete WiFi dalla lista
- * 8. Inserisci la password
- * 9. Click "Save"
- * 10. ESP8266 si riavvia e si connette al tuo WiFi!
+ * 3. Click "Configure WiFi"
+ * 4. Seleziona la tua rete WiFi dalla lista
+ * 5. Inserisci la password WiFi
+ * 6. **INCOLLA L'ID DISPOSITIVO** copiato dalla webapp (es. "PROJ1-ESP3")
+ * 7. Click "Save"
+ * 8. ESP8266 si riavvia, si connette al WiFi e genera automaticamente
+ *    la sua chiave di sicurezza (Device Key)
+ * 9. Al primo heartbeat, la webapp registra la chiave
+ *
+ * IL DISPOSITIVO È CONFIGURATO!
+ * Device ID e Key sono salvati permanentemente in EEPROM.
  *
  * LE CREDENZIALI SONO SALVATE PERMANENTEMENTE!
  * Non serve più Arduino IDE per cambiare WiFi.
@@ -148,7 +169,17 @@ const char* OTA_PASSWORD = "serra2025";
 // Supabase configuration
 const char* SUPABASE_URL = "https://fmyomzywzjtxmabvvjcd.supabase.co";
 const char* API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteW9tenl3emp0eG1hYnZ2amNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5MTU1ODksImV4cCI6MjA3NTQ5MTU4OX0.XNaYzevjhVxRBC6hIMjSHBMe6iNoARz78XvB4iziuCE";
-const char* DEVICE_ID = "0f24ada1-b6f6-45a2-aa0e-0e417daae659";
+
+// Device configuration - Salvato in EEPROM dopo configurazione WiFi
+char COMPOSITE_DEVICE_ID[32] = "";  // Verrà richiesto nel portale WiFi
+char DEVICE_KEY[64] = "";           // Generato automaticamente al primo avvio
+
+// EEPROM addresses
+#define EEPROM_SIZE 512
+#define EEPROM_DEVICE_ID_ADDR 0
+#define EEPROM_DEVICE_KEY_ADDR 100
+#define EEPROM_MAGIC_ADDR 400
+#define EEPROM_MAGIC_VALUE 0xAB
 
 // Hardware pins
 #define DHT_PIN_1 D2
@@ -183,6 +214,92 @@ bool buttonPressed = false;
 
 bool sensorsConfigured = false;
 
+// WiFiManager custom parameter
+WiFiManagerParameter* custom_device_id;
+
+// ========================================
+// EEPROM FUNCTIONS
+// ========================================
+
+void loadDeviceConfig() {
+  EEPROM.begin(EEPROM_SIZE);
+
+  // Check if EEPROM is initialized
+  if (EEPROM.read(EEPROM_MAGIC_ADDR) != EEPROM_MAGIC_VALUE) {
+    Serial.println("EEPROM not initialized");
+    EEPROM.end();
+    return;
+  }
+
+  // Load Composite Device ID
+  for (int i = 0; i < 31; i++) {
+    COMPOSITE_DEVICE_ID[i] = EEPROM.read(EEPROM_DEVICE_ID_ADDR + i);
+    if (COMPOSITE_DEVICE_ID[i] == 0) break;
+  }
+  COMPOSITE_DEVICE_ID[31] = 0;
+
+  // Load Device Key
+  for (int i = 0; i < 63; i++) {
+    DEVICE_KEY[i] = EEPROM.read(EEPROM_DEVICE_KEY_ADDR + i);
+    if (DEVICE_KEY[i] == 0) break;
+  }
+  DEVICE_KEY[63] = 0;
+
+  EEPROM.end();
+
+  Serial.print("Loaded Device ID: ");
+  Serial.println(COMPOSITE_DEVICE_ID);
+  Serial.print("Loaded Device Key: ");
+  Serial.println(strlen(DEVICE_KEY) > 0 ? "[present]" : "[empty]");
+}
+
+void saveDeviceConfig() {
+  EEPROM.begin(EEPROM_SIZE);
+
+  // Save Composite Device ID
+  for (int i = 0; i < 31 && COMPOSITE_DEVICE_ID[i] != 0; i++) {
+    EEPROM.write(EEPROM_DEVICE_ID_ADDR + i, COMPOSITE_DEVICE_ID[i]);
+  }
+  EEPROM.write(EEPROM_DEVICE_ID_ADDR + strlen(COMPOSITE_DEVICE_ID), 0);
+
+  // Save Device Key
+  for (int i = 0; i < 63 && DEVICE_KEY[i] != 0; i++) {
+    EEPROM.write(EEPROM_DEVICE_KEY_ADDR + i, DEVICE_KEY[i]);
+  }
+  EEPROM.write(EEPROM_DEVICE_KEY_ADDR + strlen(DEVICE_KEY), 0);
+
+  // Set magic value
+  EEPROM.write(EEPROM_MAGIC_ADDR, EEPROM_MAGIC_VALUE);
+
+  EEPROM.commit();
+  EEPROM.end();
+
+  Serial.println("Device config saved to EEPROM");
+}
+
+void generateDeviceKey() {
+  if (strlen(DEVICE_KEY) > 0) {
+    Serial.println("Device key already exists");
+    return;
+  }
+
+  Serial.println("Generating new device key...");
+
+  // Generate random key using chip ID + random seed
+  randomSeed(ESP.getChipId() + micros());
+
+  const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  for (int i = 0; i < 48; i++) {
+    DEVICE_KEY[i] = charset[random(0, sizeof(charset) - 1)];
+  }
+  DEVICE_KEY[48] = 0;
+
+  Serial.print("Generated key: ");
+  Serial.println(DEVICE_KEY);
+
+  saveDeviceConfig();
+}
+
 // ========================================
 // SETUP
 // ========================================
@@ -192,8 +309,8 @@ void setup() {
   delay(1000);
 
   Serial.println("\n\n=================================");
-  Serial.println("Serra System v1.2");
-  Serial.println("WiFiManager + OTA");
+  Serial.println("Serra System v1.3");
+  Serial.println("Composite Device ID Support");
   Serial.println("=================================\n");
 
   // LED e pulsante reset WiFi
@@ -215,9 +332,39 @@ void setup() {
   digitalWrite(FAN_PIN, LOW);
 
   // ========================================
+  // DEVICE CONFIGURATION
+  // ========================================
+  Serial.println("Loading device configuration...");
+  loadDeviceConfig();
+
+  // ========================================
   // WIFI MANAGER SETUP
   // ========================================
   Serial.println("Starting WiFiManager...");
+
+  // Custom parameter: Device ID
+  custom_device_id = new WiFiManagerParameter(
+    "device_id",
+    "Device ID (es. PROJ1-ESP3)",
+    COMPOSITE_DEVICE_ID,
+    31
+  );
+  wifiManager.addParameter(custom_device_id);
+
+  // Callback quando salva la configurazione WiFi
+  wifiManager.setSaveConfigCallback([]() {
+    Serial.println("WiFi configuration saved");
+
+    // Copy custom parameter value
+    strncpy(COMPOSITE_DEVICE_ID, custom_device_id->getValue(), 31);
+    COMPOSITE_DEVICE_ID[31] = 0;
+
+    Serial.print("Device ID from portal: ");
+    Serial.println(COMPOSITE_DEVICE_ID);
+
+    // Save to EEPROM
+    saveDeviceConfig();
+  });
 
   // Reset settings per test (commenta in produzione)
   // wifiManager.resetSettings();
@@ -295,6 +442,22 @@ void setup() {
 
   // LED fisso = connesso
   digitalWrite(LED_PIN, LOW);
+
+  // ========================================
+  // DEVICE KEY GENERATION
+  // ========================================
+  generateDeviceKey();
+
+  // Validate configuration
+  if (strlen(COMPOSITE_DEVICE_ID) == 0) {
+    Serial.println("⚠️  WARNING: Device ID not configured!");
+    Serial.println("Please configure via WiFi portal (reset WiFi config)");
+  } else {
+    Serial.print("Device ID: ");
+    Serial.println(COMPOSITE_DEVICE_ID);
+    Serial.print("Device Key: ");
+    Serial.println(DEVICE_KEY);
+  }
 
   // ========================================
   // SETUP OTA
@@ -450,8 +613,8 @@ void setupWebOTA() {
     html += ".btn-danger{background:#d33;}</style></head><body>";
     html += "<h1>🌱 Greenhouse System</h1>";
     html += "<table>";
-    html += "<tr><td><b>Device ID</b></td><td>" + String(DEVICE_ID) + "</td></tr>";
-    html += "<tr><td><b>Firmware</b></td><td>v1.2 - WiFiManager + OTA</td></tr>";
+    html += "<tr><td><b>Device ID</b></td><td>" + String(COMPOSITE_DEVICE_ID) + "</td></tr>";
+    html += "<tr><td><b>Firmware</b></td><td>v1.3 - Composite ID Support</td></tr>";
     html += "<tr><td><b>WiFi SSID</b></td><td>" + WiFi.SSID() + "</td></tr>";
     html += "<tr><td><b>IP Address</b></td><td>" + WiFi.localIP().toString() + "</td></tr>";
     html += "<tr><td><b>Signal</b></td><td>" + String(WiFi.RSSI()) + " dBm</td></tr>";
@@ -486,56 +649,116 @@ void setupWebOTA() {
 // ========================================
 
 void checkSensorConfiguration() {
-  HTTPClient http;
-  http.begin(client, String(SUPABASE_URL) + "/rest/v1/rpc/check_device_sensors");
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("apikey", API_KEY);
-  http.addHeader("Authorization", "Bearer " + String(API_KEY));
-
-  String payload = "{\"device_id_param\":\"" + String(DEVICE_ID) + "\"}";
-  int httpCode = http.POST(payload);
-  
-  if (httpCode == 200) {
-    DynamicJsonDocument doc(256);
-    if (!deserializeJson(doc, http.getString()) && doc["has_sensors"].as<bool>()) {
-      sensorsConfigured = true;
-      Serial.println("✓ Sensors configured");
-    }
-  }
-  http.end();
+  // Abilita sempre la lettura sensori
+  sensorsConfigured = true;
+  Serial.println("✓ Sensors enabled - will read DHT22 and soil moisture every 30s");
 }
 
 void sendHeartbeat() {
+  Serial.println("\n=== Sending heartbeat ===");
+  Serial.print("Composite Device ID: ");
+  Serial.println(COMPOSITE_DEVICE_ID);
+  Serial.print("Device Key: ");
+  Serial.println(DEVICE_KEY);
+  Serial.print("URL: ");
+  Serial.println(String(SUPABASE_URL) + "/functions/v1/device-heartbeat");
+
   HTTPClient http;
-  http.begin(client, String(SUPABASE_URL) + "/rest/v1/rpc/device_heartbeat");
+  http.begin(client, String(SUPABASE_URL) + "/functions/v1/device-heartbeat");
+
+  // Headers richiesti dall'Edge Function
   http.addHeader("Content-Type", "application/json");
   http.addHeader("apikey", API_KEY);
-  http.addHeader("Authorization", "Bearer " + String(API_KEY));
+  http.addHeader("x-composite-device-id", String(COMPOSITE_DEVICE_ID));
+  http.addHeader("x-device-key", String(DEVICE_KEY));
 
-  String payload = "{\"device_id_param\":\"" + String(DEVICE_ID) + "\"}";
+  Serial.println("Headers set:");
+  Serial.println("- Content-Type: application/json");
+  Serial.println("- apikey: [hidden]");
+  Serial.print("- x-composite-device-id: ");
+  Serial.println(COMPOSITE_DEVICE_ID);
+  Serial.print("- x-device-key: ");
+  Serial.println(DEVICE_KEY);
+
+  // Payload con telemetria
+  String payload = "{";
+  payload += "\"rssi\":" + String(WiFi.RSSI()) + ",";
+  payload += "\"fw_version\":\"v1.3\",";
+  payload += "\"ip_address\":\"" + WiFi.localIP().toString() + "\",";
+  payload += "\"device_hostname\":\"" + String(OTA_HOSTNAME) + "\"";
+  payload += "}";
+
+  Serial.print("Payload: ");
+  Serial.println(payload);
+
   int httpCode = http.POST(payload);
 
+  Serial.print("HTTP Code: ");
+  Serial.println(httpCode);
+
   if (httpCode == 200) {
-    Serial.println("✓ Heartbeat");
+    Serial.println("✓ Heartbeat OK");
+    String response = http.getString();
+    Serial.print("Response: ");
+    Serial.println(response);
+  } else {
+    Serial.print("✗ Heartbeat failed: ");
+    Serial.println(httpCode);
+    if (httpCode > 0) {
+      String response = http.getString();
+      Serial.print("Error response: ");
+      Serial.println(response);
+    }
   }
+
   http.end();
+  Serial.println("=========================\n");
 }
 
 void sendSensorData() {
+  Serial.println("\n=== Reading Sensors ===");
+
   float t1 = dht1.readTemperature();
   float h1 = dht1.readHumidity();
-  if (isnan(t1) || isnan(h1)) { t1 = 22.5; h1 = 55.0; }
+
+  Serial.print("DHT22 #1 (D2): ");
+  if (isnan(t1) || isnan(h1)) {
+    Serial.println("❌ FAILED - Using fallback values");
+    t1 = 22.5;
+    h1 = 55.0;
+  } else {
+    Serial.print("✓ Temp: ");
+    Serial.print(t1);
+    Serial.print("°C, Humidity: ");
+    Serial.print(h1);
+    Serial.println("%");
+  }
 
   float t2 = 0, h2 = 0;
   bool hasDHT2 = false;
   if (ENABLE_DHT2) {
     t2 = dht2.readTemperature();
     h2 = dht2.readHumidity();
-    if (!isnan(t2) && !isnan(h2)) hasDHT2 = true;
+    Serial.print("DHT22 #2 (D1): ");
+    if (!isnan(t2) && !isnan(h2)) {
+      hasDHT2 = true;
+      Serial.print("✓ Temp: ");
+      Serial.print(t2);
+      Serial.print("°C, Humidity: ");
+      Serial.print(h2);
+      Serial.println("%");
+    } else {
+      Serial.println("❌ Not connected or failed");
+    }
   }
 
   int soilRaw = analogRead(SOIL_PIN);
   float soil = map(soilRaw, 0, 1023, 0, 100);
+  Serial.print("Soil Moisture (A0): ");
+  Serial.print(soil);
+  Serial.print("% (raw: ");
+  Serial.print(soilRaw);
+  Serial.println(")");
 
   HTTPClient http;
   http.begin(client, String(SUPABASE_URL) + "/rest/v1/rpc/insert_sensor_readings");
@@ -543,7 +766,7 @@ void sendSensorData() {
   http.addHeader("apikey", API_KEY);
   http.addHeader("Authorization", "Bearer " + String(API_KEY));
 
-  String payload = "{\"device_id_param\":\"" + String(DEVICE_ID) + "\",\"readings\":[";
+  String payload = "{\"device_id_param\":\"" + String(COMPOSITE_DEVICE_ID) + "\",\"readings\":[";
   payload += "{\"sensor_id\":\"temp_1\",\"value\":" + String(t1) + "},";
   payload += "{\"sensor_id\":\"humidity_1\",\"value\":" + String(h1) + "},";
   if (hasDHT2) {
@@ -552,8 +775,18 @@ void sendSensorData() {
   }
   payload += "{\"sensor_id\":\"soil_1\",\"value\":" + String(soil) + "}]}";
 
-  http.POST(payload);
+  Serial.println("\nSending sensor data to server...");
+  int httpCode = http.POST(payload);
+
+  if (httpCode == 200) {
+    Serial.println("✓ Sensor data sent successfully");
+  } else {
+    Serial.print("✗ Failed to send sensor data: ");
+    Serial.println(httpCode);
+  }
+
   http.end();
+  Serial.println("=========================\n");
 }
 
 void configureSensorsAndActuators() {
@@ -568,7 +801,7 @@ void pollForCommands() {
   http.addHeader("apikey", API_KEY);
   http.addHeader("Authorization", "Bearer " + String(API_KEY));
 
-  String payload = "{\"device_id_param\":\"" + String(DEVICE_ID) + "\"}";
+  String payload = "{\"device_id_param\":\"" + String(COMPOSITE_DEVICE_ID) + "\"}";
   if (http.POST(payload) == 200) {
     DynamicJsonDocument doc(512);
     if (!deserializeJson(doc, http.getString())) {
@@ -581,7 +814,7 @@ void pollForCommands() {
         httpClear.addHeader("Content-Type", "application/json");
         httpClear.addHeader("apikey", API_KEY);
         httpClear.addHeader("Authorization", "Bearer " + String(API_KEY));
-        httpClear.POST("{\"device_id_param\":\"" + String(DEVICE_ID) + "\"}");
+        httpClear.POST("{\"device_id_param\":\"" + String(COMPOSITE_DEVICE_ID) + "\"}");
         httpClear.end();
         return;
       }
@@ -594,7 +827,7 @@ void pollForCommands() {
   http.addHeader("apikey", API_KEY);
   http.addHeader("Authorization", "Bearer " + String(API_KEY));
 
-  if (http.POST("{\"device_id_param\":\"" + String(DEVICE_ID) + "\"}") == 200) {
+  if (http.POST("{\"device_id_param\":\"" + String(COMPOSITE_DEVICE_ID) + "\"}") == 200) {
     DynamicJsonDocument doc(2048);
     if (!deserializeJson(doc, http.getString())) {
       JsonArray commands = doc.as<JsonArray>();

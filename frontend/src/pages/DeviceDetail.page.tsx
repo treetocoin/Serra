@@ -6,12 +6,32 @@ import { supabase } from '../lib/supabase';
 import { SensorList } from '../components/sensors/SensorList';
 import { ActuatorList } from '../components/actuators/ActuatorList';
 import { DeviceSetup } from '../components/devices/DeviceSetup';
-import { Home, ArrowLeft, LogOut, Wifi, WifiOff, AlertCircle, LineChart } from 'lucide-react';
+import { SensorConfigForm } from '../components/devices/SensorConfigForm';
+import { useSensorConfigs, useDeactivateSensorConfig } from '../hooks/useSensorConfig';
+import { SENSOR_TYPE_LABELS } from '../types/sensor-config.types';
+import {
+  TemperatureChart,
+  HumidityChart,
+  WaterLevelChart,
+  SoilMoisture1Chart,
+  SoilMoisture2Chart,
+  SoilMoisture3Chart,
+  SoilMoisture4Chart,
+  SoilMoisture5Chart,
+} from '../components/charts';
+import { Home, ArrowLeft, LogOut, Wifi, WifiOff, AlertCircle, LineChart, Copy, Check, Trash2, Edit } from 'lucide-react';
+import { useState } from 'react';
 
 export function DeviceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user, signOut } = useAuth();
   const queryClient = useQueryClient();
+  const [copied, setCopied] = useState(false);
+  const [editingConfig, setEditingConfig] = useState<any | null>(null);
+
+  // Fetch sensor configurations
+  const { data: sensorConfigs } = useSensorConfigs(id || '');
+  const deactivateConfig = useDeactivateSensorConfig();
 
   const { data: device, isLoading, error } = useQuery({
     queryKey: ['device', id],
@@ -42,6 +62,24 @@ export function DeviceDetailPage() {
 
   const handleSignOut = async () => {
     await signOut();
+  };
+
+  const handleCopyId = async () => {
+    if (!device?.composite_device_id) return;
+    try {
+      await navigator.clipboard.writeText(device.composite_device_id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  const handleRemoveConfig = (configId: string) => {
+    if (!id) return;
+    if (confirm('Rimuovere questa configurazione sensore? I dati storici verranno preservati.')) {
+      deactivateConfig.mutate({ configId, deviceId: id });
+    }
   };
 
   if (isLoading) {
@@ -155,6 +193,41 @@ export function DeviceDetailPage() {
                 <div className="mt-1 text-gray-900">{device.firmware_version || 'Sconosciuta'}</div>
               </div>
             </div>
+
+            {/* Device ID - Prominente per configurazione */}
+            {device.composite_device_id && (
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <label className="text-sm font-medium text-gray-500 block mb-2">
+                  ID Dispositivo
+                  <span className="ml-2 text-xs text-gray-400">(da inserire nella configurazione ESP8266)</span>
+                </label>
+                <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg border-2 border-blue-300">
+                  <code className="flex-1 text-lg font-mono font-bold text-blue-900">
+                    {device.composite_device_id}
+                  </code>
+                  <button
+                    onClick={handleCopyId}
+                    className="flex items-center space-x-1 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shrink-0"
+                    title="Copia ID"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="h-4 w-4" />
+                        <span className="text-sm">Copiato!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4" />
+                        <span className="text-sm">Copia</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Usa questo ID per configurare l'ESP8266 via portale web (http://serrasetup.local)
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Setup Sensors Card - Only show if device is online and has no sensors */}
@@ -170,6 +243,93 @@ export function DeviceDetailPage() {
               }}
             />
           )}
+
+          {/* Sensor Configuration Section */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Configurazione Sensori Standard</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Configura i sensori standard collegati al dispositivo specificando il tipo e la porta fisica.
+            </p>
+
+            {/* Existing Configurations */}
+            {sensorConfigs && sensorConfigs.length > 0 ? (
+              <div className="space-y-2 mb-6">
+                <h3 className="text-sm font-medium text-gray-700">Configurazioni Attive</h3>
+                {sensorConfigs.map((config) => (
+                  <div
+                    key={config.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {SENSOR_TYPE_LABELS[config.sensor_type]}
+                        </p>
+                        <p className="text-sm text-gray-500">Porta: {config.port_id}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => setEditingConfig(config)}
+                        disabled={deactivateConfig.isPending}
+                        className="flex items-center space-x-1 px-3 py-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors disabled:opacity-50"
+                        title="Modifica configurazione"
+                      >
+                        <Edit className="h-4 w-4" />
+                        <span className="text-sm">Modifica</span>
+                      </button>
+                      <button
+                        onClick={() => handleRemoveConfig(config.id)}
+                        disabled={deactivateConfig.isPending}
+                        className="flex items-center space-x-1 px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
+                        title="Rimuovi configurazione"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="text-sm">Rimuovi</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200 text-center">
+                <p className="text-sm text-gray-600">
+                  Nessun sensore configurato. Aggiungi la prima configurazione usando il form qui sotto.
+                </p>
+              </div>
+            )}
+
+            {/* Add/Edit Configuration Form */}
+            <SensorConfigForm
+              deviceId={device.id}
+              editingConfig={editingConfig}
+              onSuccess={() => setEditingConfig(null)}
+              onCancelEdit={() => setEditingConfig(null)}
+            />
+          </div>
+
+          {/* Sensor Charts Section */}
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold text-gray-900">Grafici Sensori</h2>
+
+            {/* Temperature and Humidity Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <TemperatureChart deviceId={device.id} />
+              <HumidityChart deviceId={device.id} />
+            </div>
+
+            {/* Water Level Chart */}
+            <WaterLevelChart deviceId={device.id} />
+
+            {/* Soil Moisture Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              <SoilMoisture1Chart deviceId={device.id} />
+              <SoilMoisture2Chart deviceId={device.id} />
+              <SoilMoisture3Chart deviceId={device.id} />
+              <SoilMoisture4Chart deviceId={device.id} />
+              <SoilMoisture5Chart deviceId={device.id} />
+            </div>
+          </div>
 
           {/* History Link */}
           {(sensors?.length ?? 0) > 0 && (
