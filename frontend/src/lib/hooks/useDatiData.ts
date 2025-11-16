@@ -270,3 +270,99 @@ export function useComparisonChartData(
     refetchOnReconnect: false,
   });
 }
+
+// ============================================================================
+// Admin Hooks - For viewing other users' data
+// ============================================================================
+
+/**
+ * Admin version: Fetch current readings for a specific user
+ *
+ * @param userId - Target user ID to fetch readings for
+ * @returns Query result with array of current readings
+ */
+export function useAdminCurrentReadings(userId: string | null): UseQueryResult<CurrentReading[], Error> {
+  return useQuery<CurrentReading[], Error>({
+    queryKey: DatiQueryKeys.currentReadings(userId || ''),
+    queryFn: async () => {
+      if (!userId) {
+        throw new Error('User ID is required');
+      }
+      return await datiService.getCurrentReadings(userId);
+    },
+    enabled: !!userId,
+    ...CacheConfigurations.currentReadings,
+  });
+}
+
+/**
+ * Admin version: Fetch time-series data for a specific user and sensor type
+ *
+ * @param userId - Target user ID
+ * @param sensorType - Type of sensor to fetch data for
+ * @param timeRangeValue - Time range selector
+ * @returns Query result with time-series data points
+ */
+export function useAdminTimeSeriesData(
+  userId: string | null,
+  sensorType: SensorType,
+  timeRangeValue: TimeRangeValue
+): UseQueryResult<TimeSeriesDataPoint[], Error> {
+  const timeRange = createTimeRange(timeRangeValue);
+
+  return useQuery<TimeSeriesDataPoint[], Error>({
+    queryKey: DatiQueryKeys.timeSeries(userId || '', sensorType, timeRangeValue),
+    queryFn: async () => {
+      if (!userId) {
+        throw new Error('User ID is required');
+      }
+      return await datiService.getTimeSeriesData(userId, sensorType, timeRange);
+    },
+    enabled: !!userId,
+    staleTime: 300000, // 5 minutes
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+}
+
+/**
+ * Admin version: Fetch comparison chart data for a specific user
+ *
+ * @param userId - Target user ID
+ * @param primaryType - First sensor type
+ * @param secondaryType - Second sensor type
+ * @param timeRangeValue - Time range selector
+ * @returns Query result with aligned comparison data
+ */
+export function useAdminComparisonChartData(
+  userId: string | null,
+  primaryType: SensorType,
+  secondaryType: SensorType,
+  timeRangeValue: TimeRangeValue
+): UseQueryResult<ComparisonChartData[], Error> {
+  const timeRange = createTimeRange(timeRangeValue);
+
+  return useQuery<ComparisonChartData[], Error>({
+    queryKey: DatiQueryKeys.comparisonChart(
+      userId || '',
+      primaryType,
+      secondaryType,
+      timeRangeValue
+    ),
+    queryFn: async () => {
+      if (!userId) {
+        throw new Error('User ID is required');
+      }
+      return await datiService.getComparisonChartData(
+        userId,
+        primaryType,
+        secondaryType,
+        timeRange
+      );
+    },
+    enabled: !!userId,
+    staleTime: 300000, // 5 minutes
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+}

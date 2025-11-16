@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../lib/hooks/useAuth';
 import { devicesService } from '../services/devices.service';
-import { LogOut, Home, Cpu, Zap, BarChart3, Settings } from 'lucide-react';
+import { LogOut, Home, Cpu, Zap, BarChart3, Settings, Shield } from 'lucide-react';
+import { useUserRole } from '../lib/hooks/useAdmin';
 import {
   useCurrentReadings,
   useComparisonChartData,
@@ -16,6 +17,7 @@ import type { TimeRangeValue } from '../types/dati.types';
 export function DashboardPage() {
   const { user, signOut } = useAuth();
   const [timeRangeValue] = useState<TimeRangeValue>('24h');
+  const { data: userRole } = useUserRole();
 
   // Fetch devices
   const { data: devices } = useQuery({
@@ -187,6 +189,28 @@ export function DashboardPage() {
               <p className="text-xs text-orange-600 mt-2">Clicca per visualizzare →</p>
             </Link>
           </div>
+
+          {/* Admin Link (only for admin users) */}
+          {userRole === 'admin' && (
+            <div className="mt-4">
+              <Link
+                to="/admin"
+                className="bg-gradient-to-r from-purple-50 to-purple-100 p-6 rounded-lg border-2 border-purple-300 hover:border-purple-500 hover:shadow-lg transition-all cursor-pointer flex items-center justify-between"
+              >
+                <div>
+                  <div className="flex items-center mb-2">
+                    <Shield className="h-5 w-5 text-purple-600 mr-2" />
+                    <h3 className="font-medium text-gray-900">Admin Dashboard</h3>
+                  </div>
+                  <p className="text-sm text-gray-600">Gestisci tutti gli utenti e progetti</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-purple-600">🛡️</p>
+                  <p className="text-xs text-purple-600 mt-2">Clicca per accedere →</p>
+                </div>
+              </Link>
+            </div>
+          )}
         </div>
       </main>
     </div>
