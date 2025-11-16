@@ -188,8 +188,13 @@ export const sensorsService = {
   } {
     const configs: Record<string, { icon: string; color: string; bgColor: string }> = {
       temperature: { icon: '🌡️', color: 'text-red-600', bgColor: 'bg-red-50' },
+      dht_sopra_temp: { icon: '🌡️', color: 'text-red-500', bgColor: 'bg-red-50' },
+      dht_sotto_temp: { icon: '🌡️', color: 'text-blue-500', bgColor: 'bg-blue-50' },
       humidity: { icon: '💧', color: 'text-blue-600', bgColor: 'bg-blue-50' },
+      dht_sopra_humidity: { icon: '💧', color: 'text-cyan-500', bgColor: 'bg-cyan-50' },
+      dht_sotto_humidity: { icon: '💧', color: 'text-sky-600', bgColor: 'bg-sky-50' },
       soil_moisture: { icon: '🌱', color: 'text-green-600', bgColor: 'bg-green-50' },
+      water_level: { icon: '💧', color: 'text-indigo-500', bgColor: 'bg-indigo-50' },
       light_level: { icon: '☀️', color: 'text-yellow-600', bgColor: 'bg-yellow-50' },
       ph: { icon: '⚗️', color: 'text-purple-600', bgColor: 'bg-purple-50' },
       ec: { icon: '⚡', color: 'text-orange-600', bgColor: 'bg-orange-50' },
@@ -197,6 +202,35 @@ export const sensorsService = {
     };
 
     return configs[sensorType] || { icon: '📊', color: 'text-gray-600', bgColor: 'bg-gray-50' };
+  },
+
+  /**
+   * Get human-readable display name for sensor type (Italian)
+   *
+   * @param sensorType - Sensor type from database
+   * @returns Italian display name
+   * @feature 005-lavoriamo-alla-pagina (T004)
+   */
+  getDisplayName(sensorType: string): string {
+    const displayNames: Record<string, string> = {
+      dht_sopra_temp: 'Temperatura Sopra',
+      dht_sopra_humidity: 'Umidità Sopra',
+      dht_sotto_temp: 'Temperatura Sotto',
+      dht_sotto_humidity: 'Umidità Sotto',
+      soil_moisture: 'Umidità Terreno',
+      water_level: 'Livello Serbatoio',
+      unconfigured: 'Non Configurato',
+      // Legacy fallbacks
+      temperature: 'Temperatura',
+      humidity: 'Umidità',
+      soil_moisture_1: 'Umidità Terreno 1',
+      soil_moisture_2: 'Umidità Terreno 2',
+      soil_moisture_3: 'Umidità Terreno 3',
+      soil_moisture_4: 'Umidità Terreno 4',
+      soil_moisture_5: 'Umidità Terreno 5',
+    };
+
+    return displayNames[sensorType] || sensorType;
   },
 
   /**

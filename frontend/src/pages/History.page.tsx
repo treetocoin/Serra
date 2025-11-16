@@ -25,7 +25,7 @@ export function HistoryPage() {
   const queryClient = useQueryClient();
 
   // Time range state
-  const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h' | '7d'>('6h');
+  const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d'>('24h');
   const [hiddenSensors, setHiddenSensors] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -71,17 +71,14 @@ export function HistoryPage() {
       const startDate = new Date(now);
 
       switch (timeRange) {
-        case '1h':
-          startDate.setHours(startDate.getHours() - 1);
-          break;
-        case '6h':
-          startDate.setHours(startDate.getHours() - 6);
-          break;
         case '24h':
           startDate.setHours(startDate.getHours() - 24);
           break;
         case '7d':
           startDate.setDate(startDate.getDate() - 7);
+          break;
+        case '30d':
+          startDate.setDate(startDate.getDate() - 30);
           break;
       }
 
@@ -100,33 +97,46 @@ export function HistoryPage() {
       console.log('[History] Query result:', data?.length || 0, 'readings');
       if (error) console.error('[History] Query error:', error);
 
-      if (!data) return { data: [], sensorNames: [] };
+      if (!data) return { data: [], sensorNames: [], timeRange: { start: startDate, end: now } };
 
-      // Group by timestamp
+      // Group by timestamp (use numeric timestamp for continuous axis)
       const grouped = data.reduce((acc: any, reading) => {
-        const time = new Date(reading.timestamp).toLocaleTimeString('it-IT', {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
+        const timestamp = new Date(reading.timestamp).getTime();
+        // Round to nearest minute for grouping
+        const roundedTimestamp = Math.floor(timestamp / (60 * 1000)) * (60 * 1000);
 
-        if (!acc[time]) {
-          acc[time] = { time };
+        if (!acc[roundedTimestamp]) {
+          acc[roundedTimestamp] = { timestamp: roundedTimestamp };
         }
 
         // Use sensor_name from the reading (snapshot of name at time of reading)
         const sensorLabel = reading.sensor_name || reading.sensor_id;
 
         // If multiple readings for same label at same time, take average
-        if (acc[time][sensorLabel] !== undefined) {
-          acc[time][sensorLabel] = (acc[time][sensorLabel] + reading.value) / 2;
+        if (acc[roundedTimestamp][sensorLabel] !== undefined) {
+          acc[roundedTimestamp][sensorLabel] = (acc[roundedTimestamp][sensorLabel] + reading.value) / 2;
         } else {
-          acc[time][sensorLabel] = reading.value;
+          acc[roundedTimestamp][sensorLabel] = reading.value;
         }
 
         return acc;
       }, {});
 
-      const result = Object.values(grouped);
+      let result = Object.values(grouped).sort((a: any, b: any) => a.timestamp - b.timestamp);
+
+      // Add null markers at start and end to show full time range
+      const firstDataPoint = result[0] as any;
+      const lastDataPoint = result[result.length - 1] as any;
+
+      // If first data point is after range start, add null point at start
+      if (firstDataPoint && firstDataPoint.timestamp > startDate.getTime() + 15 * 60 * 1000) {
+        result = [{ timestamp: startDate.getTime() }, ...result];
+      }
+
+      // Always extend to "now" if last data is old
+      if (lastDataPoint && now.getTime() - lastDataPoint.timestamp > 15 * 60 * 1000) {
+        result = [...result, { timestamp: now.getTime() }];
+      }
       console.log('[History] Grouped data:', result.length, 'points');
       console.log('[History] Sample:', result[0]);
 
@@ -146,7 +156,11 @@ export function HistoryPage() {
       console.log('[History] Unique sensor names:', activeSensorNames);
       console.log('[History] Reading counts:', readingCounts);
 
-      return { data: result, sensorNames: activeSensorNames };
+      return {
+        data: result,
+        sensorNames: activeSensorNames,
+        timeRange: { start: startDate.getTime(), end: now.getTime() }
+      };
     },
     enabled: !!allSensors && allSensors.length > 0,
     refetchInterval: 30000,
@@ -261,7 +275,7 @@ export function HistoryPage() {
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-900">Intervallo Temporale</h2>
               <div className="flex space-x-2">
-                {(['1h', '6h', '24h', '7d'] as const).map((range) => (
+                {(['24h', '7d', '30d'] as const).map((range) => (
                   <button
                     key={range}
                     onClick={() => setTimeRange(range)}
@@ -271,10 +285,9 @@ export function HistoryPage() {
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
-                    {range === '1h' && 'Ultima Ora'}
-                    {range === '6h' && 'Ultime 6 Ore'}
                     {range === '24h' && 'Ultime 24 Ore'}
                     {range === '7d' && 'Ultimi 7 Giorni'}
+                    {range === '30d' && 'Ultimi 30 Giorni'}
                   </button>
                 ))}
               </div>
@@ -327,15 +340,37 @@ export function HistoryPage() {
               <div className="flex items-center justify-center h-96">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
               </div>
-            ) : history && history.data && history.data.length > 0 ? (
+            ) : (
               <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={history.data}>
+                <LineChart data={history?.data || []}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" />
+                  <XAxis
+                    dataKey="timestamp"
+                    domain={history?.timeRange ? [history.timeRange.start, history.timeRange.end] : ['auto', 'auto']}
+                    type="number"
+                    scale="time"
+                    tickFormatter={(timestamp) => {
+                      const date = new Date(timestamp);
+                      return date.toLocaleTimeString('it-IT', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      });
+                    }}
+                  />
                   <YAxis />
-                  <Tooltip />
+                  <Tooltip
+                    labelFormatter={(timestamp) => {
+                      const date = new Date(timestamp as number);
+                      return date.toLocaleString('it-IT', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      });
+                    }}
+                  />
                   <Legend />
-                  {history.sensorNames?.map((sensorName: string, index: number) => {
+                  {history?.sensorNames?.map((sensorName: string, index: number) => {
                     if (hiddenSensors.has(sensorName)) return null;
 
                     // Try to find matching sensor for unit
@@ -350,16 +385,18 @@ export function HistoryPage() {
                         stroke={colors[index % colors.length]}
                         strokeWidth={2}
                         dot={false}
+                        connectNulls={false}
                         name={unit ? `${sensorName} [${unit}]` : sensorName}
                       />
                     );
                   })}
+                  {(!history?.data || history.data.length === 0) && (
+                    <text x="50%" y="50%" textAnchor="middle" fill="#9ca3af" fontSize="14">
+                      Nessun dato disponibile per questo intervallo temporale
+                    </text>
+                  )}
                 </LineChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                Nessun dato disponibile per questo intervallo temporale
-              </div>
             )}
           </div>
         </div>
