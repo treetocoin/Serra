@@ -1,11 +1,21 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../lib/hooks/useAuth';
 import { devicesService } from '../services/devices.service';
 import { LogOut, Home, Cpu, Zap, BarChart3, Settings } from 'lucide-react';
+import {
+  useCurrentReadings,
+  useComparisonChartData,
+} from '../lib/hooks/useDatiData';
+import { CurrentReadingCard, CurrentReadingCardSkeleton } from '../components/dati/CurrentReadingCard';
+import { TemperatureChart, TemperatureChartSkeleton } from '../components/dati/TemperatureChart';
+import { ChartErrorBoundary } from '../components/dati/ChartErrorBoundary';
+import type { TimeRangeValue } from '../types/dati.types';
 
 export function DashboardPage() {
   const { user, signOut } = useAuth();
+  const [timeRangeValue] = useState<TimeRangeValue>('24h');
 
   // Fetch devices
   const { data: devices } = useQuery({
@@ -18,6 +28,15 @@ export function DashboardPage() {
     },
     enabled: !!user,
   });
+
+  // Fetch current readings for real-time display
+  const { data: readings, isLoading: loadingReadings } = useCurrentReadings();
+
+  // Fetch temperature comparison chart data
+  const {
+    data: temperatureData,
+    isLoading: isLoadingTemp,
+  } = useComparisonChartData('dht_sopra_temp', 'dht_sotto_temp', timeRangeValue);
 
   const handleSignOut = async () => {
     await signOut();
@@ -53,14 +72,68 @@ export function DashboardPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Sezione superiore: Grafico Temperature + Letture Real Time */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          {/* Grafico Temperature (2/3 della larghezza) */}
+          <div className="lg:col-span-2 bg-white shadow rounded-lg p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              Temperatura (Ultime 24h)
+            </h3>
+            {isLoadingTemp ? (
+              <TemperatureChartSkeleton />
+            ) : (
+              <ChartErrorBoundary>
+                <TemperatureChart
+                  data={temperatureData || []}
+                  timeRangeValue={timeRangeValue}
+                />
+              </ChartErrorBoundary>
+            )}
+          </div>
+
+          {/* Letture Real Time (1/3 della larghezza) */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              Condizioni Attuali
+            </h3>
+            <div className="space-y-3">
+              {loadingReadings ? (
+                <>
+                  <CurrentReadingCardSkeleton />
+                  <CurrentReadingCardSkeleton />
+                  <CurrentReadingCardSkeleton />
+                  <CurrentReadingCardSkeleton />
+                </>
+              ) : readings && readings.length > 0 ? (
+                readings.slice(0, 6).map((reading) => (
+                  <CurrentReadingCard
+                    key={reading.sensorType}
+                    reading={reading}
+                  />
+                ))
+              ) : (
+                <p className="text-sm text-gray-500 text-center py-4">
+                  Nessun dato disponibile
+                </p>
+              )}
+            </div>
+            {readings && readings.length > 6 && (
+              <Link
+                to="/dati"
+                className="mt-4 block text-center text-sm text-green-600 hover:text-green-700 font-medium"
+              >
+                Vedi tutti i sensori →
+              </Link>
+            )}
+          </div>
+        </div>
+
+        {/* Sezione navigazione */}
         <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Benvenuto nella Dashboard!</h2>
-          <p className="text-gray-600 mb-4">
-            Il tuo sistema di gestione serra è pronto. Gestisci dispositivi, attuatori, automazioni e visualizza lo storico.
-          </p>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Gestione Sistema</h2>
 
           {/* Prima riga: Dispositivi e Attuatori */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Link
               to="/devices"
               className="bg-gray-50 p-6 rounded-lg border border-gray-200 hover:border-green-500 hover:shadow-md transition-all cursor-pointer"
