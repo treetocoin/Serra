@@ -16,6 +16,8 @@ import { SensorsPage } from './pages/Sensors.page';
 import { ActuatorsPage } from './pages/Actuators.page';
 import { AutomationPage } from './pages/Automation.page';
 import { Dati } from './pages/Dati';
+import { AdminPage } from './pages/Admin.page';
+import { AdminUserDetailPage } from './pages/AdminUserDetail.page';
 
 // Create React Query client
 const queryClient = new QueryClient({
@@ -109,6 +111,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Dati />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <AdminPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/users/:userId"
+              element={
+                <ProtectedRoute>
+                  <AdminUserDetailPage />
                 </ProtectedRoute>
               }
             />

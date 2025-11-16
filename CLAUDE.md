@@ -25,9 +25,9 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 Python 3.11+ (backend), TypeScript 5+ (frontend): Follow standard conventions
 
 ## Recent Changes
+- 006-fammi-un-tipo: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 - 005-lavoriamo-alla-pagina: Added TypeScript 5.9.3 (frontend only - no backend changes)
 - 004-deve-funzionare-così: Added TypeScript 5.x (frontend), PostgreSQL 15+ (Supabase) + React 19, @supabase/supabase-js ^2.74, @tanstack/react-query ^5.90, recharts ^3.2, tailwindcss ^4.1
-- 002-crea-e-implementa: Added TypeScript 5+ (frontend) + React 18+, Vite, @supabase/supabase-js, React Query, Recharts (extends feature 001 stack)
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
