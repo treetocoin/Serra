@@ -10,6 +10,7 @@ Auto-generated from all feature plans. Last updated: 2025-10-08
 - Supabase PostgreSQL with Row Level Security (RLS) policies (004-deve-funzionare-così)
 - TypeScript 5.9.3 (frontend only - no backend changes) (005-lavoriamo-alla-pagina)
 - Supabase PostgreSQL (existing schema - no migrations needed) (005-lavoriamo-alla-pagina)
+- TypeScript 5.9.3 (frontend only) + React 19, @supabase/supabase-js ^2.74, @tanstack/react-query ^5.90, tailwindcss ^4.1, lucide-react (icons) (007-fai-che-d)
 
 ## Project Structure
 ```
@@ -25,9 +26,9 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 Python 3.11+ (backend), TypeScript 5+ (frontend): Follow standard conventions
 
 ## Recent Changes
+- 007-fai-che-d: Added TypeScript 5.9.3 (frontend only) + React 19, @supabase/supabase-js ^2.74, @tanstack/react-query ^5.90, tailwindcss ^4.1, lucide-react (icons)
 - 006-fammi-un-tipo: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 - 005-lavoriamo-alla-pagina: Added TypeScript 5.9.3 (frontend only - no backend changes)
-- 004-deve-funzionare-così: Added TypeScript 5.x (frontend), PostgreSQL 15+ (Supabase) + React 19, @supabase/supabase-js ^2.74, @tanstack/react-query ^5.90, recharts ^3.2, tailwindcss ^4.1
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

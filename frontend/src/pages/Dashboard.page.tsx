@@ -13,11 +13,15 @@ import { CurrentReadingCard, CurrentReadingCardSkeleton } from '../components/da
 import { TemperatureChart, TemperatureChartSkeleton } from '../components/dati/TemperatureChart';
 import { ChartErrorBoundary } from '../components/dati/ChartErrorBoundary';
 import type { TimeRangeValue } from '../types/dati.types';
+import { CycleProgressBanner } from '../components/CycleProgressBanner';
+import { CycleOnboarding } from '../components/CycleOnboarding';
+import { useCycle } from '../hooks/useCycle';
 
 export function DashboardPage() {
   const { user, signOut } = useAuth();
   const [timeRangeValue] = useState<TimeRangeValue>('24h');
   const { data: userRole } = useUserRole();
+  const { data: cycle, isLoading: isLoadingCycle } = useCycle();
 
   // Fetch devices
   const { data: devices } = useQuery({
@@ -46,6 +50,11 @@ export function DashboardPage() {
 
   const deviceCount = devices?.length || 0;
 
+  // Show onboarding if no active cycle exists
+  if (!isLoadingCycle && !cycle) {
+    return <CycleOnboarding />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -71,6 +80,9 @@ export function DashboardPage() {
           </div>
         </div>
       </header>
+
+      {/* Cycle Progress Banner */}
+      <CycleProgressBanner />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -187,6 +199,22 @@ export function DashboardPage() {
               <p className="text-sm text-gray-600">Visualizza grafici e dati</p>
               <p className="text-2xl font-bold text-orange-600 mt-2">📊</p>
               <p className="text-xs text-orange-600 mt-2">Clicca per visualizzare →</p>
+            </Link>
+          </div>
+
+          {/* Terza riga: Impostazioni */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <Link
+              to="/settings"
+              className="bg-gray-50 p-6 rounded-lg border border-gray-200 hover:border-blue-500 hover:shadow-md transition-all cursor-pointer"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-medium text-gray-900">Impostazioni</h3>
+                <Settings className="h-5 w-5 text-blue-600" />
+              </div>
+              <p className="text-sm text-gray-600">Configura durata e settimana del ciclo</p>
+              <p className="text-2xl font-bold text-blue-600 mt-2">⚙️</p>
+              <p className="text-xs text-blue-600 mt-2">Clicca per configurare →</p>
             </Link>
           </div>
 
