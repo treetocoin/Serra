@@ -22,6 +22,7 @@ import {
 } from '../components/charts';
 import { Home, ArrowLeft, LogOut, Wifi, WifiOff, AlertCircle, LineChart, Copy, Check, Trash2, Edit } from 'lucide-react';
 import { useState } from 'react';
+import { DeviceRemoteControl } from '../components/devices/DeviceRemoteControl';
 
 export function DeviceDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -230,6 +231,14 @@ export function DeviceDetailPage() {
               </div>
             )}
           </div>
+
+          {/* Remote Control Section */}
+          <DeviceRemoteControl
+            deviceId={device.id}
+            deviceName={device.name}
+            isOnline={status === 'online'}
+            currentFirmwareVersion={device.firmware_version}
+          />
 
           {/* Setup Sensors Card - Only show if device is online and has no sensors */}
           {status === 'online' && (
